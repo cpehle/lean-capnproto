@@ -1,0 +1,26 @@
+import Capnp.Async
+import Capnp.Runtime
+
+namespace Capnp
+namespace Rpc
+
+abbrev Payload := Capnp.RpcEnvelope
+
+structure Method where
+  interfaceId : UInt64
+  methodId : UInt16
+  deriving Inhabited, BEq, Repr
+
+opaque ClientPoint : NonemptyType
+def Client : Type := ClientPoint.type
+instance : Nonempty Client := ClientPoint.property
+
+instance : Inhabited Client where
+  default := unsafe (unsafeCast (0 : UInt32))
+
+structure Backend where
+  call : Client -> Method -> Payload -> IO Payload
+
+@[inline] def call (backend : Backend) (target : Client) (method : Method)
+    (payload : Payload := Capnp.emptyRpcEnvelope) : IO Payload :=
+  backend.call target method payload
