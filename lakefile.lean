@@ -2,18 +2,23 @@ import Lake
 open System
 open Lake DSL
 
-def capnpBridgeLinkArgs : Array String :=
+def capnpBridgeLinkArgs (pkgDir : FilePath) : Array String :=
   if System.Platform.isOSX then
     #[
+      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "capnp").toString,
+      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString,
       "-L/opt/homebrew/lib",
       "-L/usr/local/lib",
       "-L/opt/homebrew/opt/openssl@3/lib",
       "-L/usr/local/opt/openssl@3/lib",
+      "-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib",
       "-lcapnp-rpc", "-lcapnp", "-lkj-http", "-lkj-gzip", "-lkj-tls", "-lkj-async", "-lkj",
       "-lssl", "-lcrypto", "-lz", "-lc++"
     ]
   else
     #[
+      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "capnp").toString,
+      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString,
       "-lcapnp-rpc", "-lcapnp", "-lkj-http", "-lkj-gzip", "-lkj-tls", "-lkj-async", "-lkj",
       "-lssl", "-lcrypto", "-lstdc++",
       "-lz", "-pthread"
@@ -27,12 +32,14 @@ def capnpBridgeCompileArgs : Array String :=
 
 package capnproto_lean where
   moreLeanArgs := #["-DmaxHeartbeats=2000000"]
-  moreLinkArgs := capnpBridgeLinkArgs
+  moreLinkArgs := capnpBridgeLinkArgs __dir__
 
 require LeanTest from "test/LeanTest"
 
-def ffiWeakArgs (leanIncludeDir : FilePath) : Array String := #[
+def ffiWeakArgs (leanIncludeDir : FilePath) (pkgDir : FilePath) : Array String := #[
   "-I", leanIncludeDir.toString,
+  "-I", (pkgDir / "extern" / "capnproto" / "c++" / "src").toString,
+  "-I", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "capnp" / "test_capnp").toString,
   "-I/opt/homebrew/include",
   "-I/usr/local/include"
 ]
@@ -40,32 +47,32 @@ def ffiWeakArgs (leanIncludeDir : FilePath) : Array String := #[
 target rpc_bridge.o pkg : FilePath := do
   let srcJob ← inputTextFile <| pkg.dir / "ffi" / "rpc_bridge.cpp"
   let oFile := pkg.buildDir / "ffi" / "rpc_bridge.o"
-  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir)) capnpBridgeCompileArgs "c++" getLeanTrace
+  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir) pkg.dir) capnpBridgeCompileArgs "c++" getLeanTrace
 
 target rpc_bridge_runtime.o pkg : FilePath := do
   let srcJob ← inputTextFile <| pkg.dir / "ffi" / "rpc_bridge_runtime.cpp"
   let oFile := pkg.buildDir / "ffi" / "rpc_bridge_runtime.o"
-  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir)) capnpBridgeCompileArgs "c++" getLeanTrace
+  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir) pkg.dir) capnpBridgeCompileArgs "c++" getLeanTrace
 
 target rpc_bridge_common.o pkg : FilePath := do
   let srcJob ← inputTextFile <| pkg.dir / "ffi" / "rpc_bridge_common.cpp"
   let oFile := pkg.buildDir / "ffi" / "rpc_bridge_common.o"
-  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir)) capnpBridgeCompileArgs "c++" getLeanTrace
+  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir) pkg.dir) capnpBridgeCompileArgs "c++" getLeanTrace
 
 target rpc_bridge_payload_ref.o pkg : FilePath := do
   let srcJob ← inputTextFile <| pkg.dir / "ffi" / "rpc_bridge_payload_ref.cpp"
   let oFile := pkg.buildDir / "ffi" / "rpc_bridge_payload_ref.o"
-  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir)) capnpBridgeCompileArgs "c++" getLeanTrace
+  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir) pkg.dir) capnpBridgeCompileArgs "c++" getLeanTrace
 
 target rpc_bridge_generic_vat.o pkg : FilePath := do
   let srcJob ← inputTextFile <| pkg.dir / "ffi" / "rpc_bridge_generic_vat.cpp"
   let oFile := pkg.buildDir / "ffi" / "rpc_bridge_generic_vat.o"
-  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir)) capnpBridgeCompileArgs "c++" getLeanTrace
+  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir) pkg.dir) capnpBridgeCompileArgs "c++" getLeanTrace
 
 target kj_async_bridge.o pkg : FilePath := do
   let srcJob ← inputTextFile <| pkg.dir / "ffi" / "kj_async_bridge.cpp"
   let oFile := pkg.buildDir / "ffi" / "kj_async_bridge.o"
-  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir)) capnpBridgeCompileArgs "c++" getLeanTrace
+  buildO oFile srcJob (ffiWeakArgs (← getLeanIncludeDir) pkg.dir) capnpBridgeCompileArgs "c++" getLeanTrace
 
 target libleanrpcbridge pkg : FilePath := do
   let bridgeO ← rpc_bridge.o.fetch
