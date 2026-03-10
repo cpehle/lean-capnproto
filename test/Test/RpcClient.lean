@@ -4754,6 +4754,117 @@ def testRuntimeStreamingChainedBackpressure : IO Unit := do
     try IO.FS.removeFile aliceSocketPath catch _ => pure ()
 
 @[test]
+def testRuntimeSocketCapabilityHandoffRemainsProxiedViaIntermediaryConnection : IO Unit := do
+  if System.Platform.isWindows then
+    pure ()
+  else
+    let payload : Capnp.Rpc.Payload := mkNullPayload
+    let (aliceAddress, aliceSocketPath) ← mkUnixTestAddress
+    let (carolAddress, carolSocketPath) ← mkUnixTestAddress
+    let runtimeA ← Capnp.Rpc.Runtime.init
+    let runtimeB ← Capnp.Rpc.Runtime.init
+    let runtimeC ← Capnp.Rpc.Runtime.init
+    let cleanupSocket (path : String) : IO Unit := do
+      try
+        IO.FS.removeFile path
+      catch _ =>
+        pure ()
+    let waitTaskWithin {α : Type} (runtime : Capnp.Rpc.Runtime) (label : String)
+        (task : Task (Except IO.Error α)) (timeoutMillis : UInt32 := UInt32.ofNat 3000) :
+        IO (Option (Except IO.Error α)) := do
+      let timeoutTask ← runtime.sleepMillisAsTask timeoutMillis
+      let wrappedTask : Task (Except IO.Error (Option (Except IO.Error α))) := Task.map
+        (fun result => .ok (some result))
+        task
+      let wrappedTimeout : Task (Except IO.Error (Option (Except IO.Error α))) := Task.map
+        (fun result =>
+          match result with
+          | .ok _ => .ok none
+          | .error err => .error err)
+        timeoutTask
+      match (← IO.waitAny [wrappedTask, wrappedTimeout]) with
+      | .ok outcome =>
+          pure outcome
+      | .error err =>
+          throw (IO.userError s!"{label}: {err}")
+    let awaitTaskWithin {α : Type} (runtime : Capnp.Rpc.Runtime) (label : String)
+        (task : Task (Except IO.Error α)) (timeoutMillis : UInt32 := UInt32.ofNat 3000) : IO α := do
+      match (← waitTaskWithin runtime label task timeoutMillis) with
+      | some (.ok value) =>
+          pure value
+      | some (.error err) =>
+          throw (IO.userError s!"{label}: {err}")
+      | none =>
+          throw (IO.userError s!"{label}: timeout")
+    try
+      cleanupSocket aliceSocketPath
+      cleanupSocket carolSocketPath
+
+      let aliceCallCount ← IO.mkRef (UInt64.ofNat 0)
+      let aliceBootstrap ← runtimeA.registerHandlerTarget (fun _ method req => do
+        if method.interfaceId != Echo.interfaceId || method.methodId != Echo.fooMethodId then
+          throw (IO.userError
+            s!"unexpected method in socket handoff source target: {method.interfaceId}/{method.methodId}")
+        aliceCallCount.modify (fun count => count + (UInt64.ofNat 1))
+        pure req)
+      let aliceServer ← runtimeA.newServer aliceBootstrap
+      let aliceListener ← aliceServer.listen aliceAddress
+
+      -- Carol first imports Alice's capability over one socket connection.
+      let carolToAliceClient ← runtimeC.newClient aliceAddress
+      aliceServer.accept aliceListener
+      let carolImportedAliceCap ← carolToAliceClient.bootstrap
+
+      -- Carol then hands that A-owned capability to Bob over a separate socket connection.
+      let carolServer ← runtimeC.newServer carolImportedAliceCap
+      let carolListener ← carolServer.listen carolAddress
+      let bobToCarolClient ← runtimeB.newClient carolAddress
+      carolServer.accept carolListener
+      let bobReceivedAliceCap ← bobToCarolClient.bootstrap
+
+      -- Bob can initially use the handed-off capability.
+      let firstResult ← runtimeB.callResult bobReceivedAliceCap Echo.fooMethod payload
+      match firstResult with
+      | .ok response =>
+          assertEqual response.capTable.caps.size 0
+      | .error ex =>
+          throw (IO.userError
+            s!"initial forwarded socket capability call failed: {ex.type}: {ex.description}")
+      assertEqual (← aliceCallCount.get) (UInt64.ofNat 1)
+
+      -- If the handoff were direct, closing Carol's Alice-side client would not affect Bob's copy.
+      let disconnectTask ← carolToAliceClient.onDisconnectAsTask
+      carolToAliceClient.release
+      awaitTaskWithin runtimeC
+        "intermediary disconnect after closing source-side client"
+        disconnectTask
+
+      let secondResult ← runtimeB.callResult bobReceivedAliceCap Echo.fooMethod payload
+      match secondResult with
+      | .ok _ =>
+          throw (IO.userError
+            "expected handed-off socket capability to fail after intermediary lost its source connection")
+      | .error ex =>
+          assertTrue (!ex.description.isEmpty)
+            "disconnecting intermediary source connection should surface a remote error"
+      assertEqual (← aliceCallCount.get) (UInt64.ofNat 1)
+
+      runtimeB.releaseTarget bobReceivedAliceCap
+      bobToCarolClient.release
+      carolServer.release
+      runtimeC.releaseListener carolListener
+      runtimeC.releaseTarget carolImportedAliceCap
+      aliceServer.release
+      runtimeA.releaseListener aliceListener
+      runtimeA.releaseTarget aliceBootstrap
+    finally
+      runtimeC.shutdown
+      runtimeB.shutdown
+      runtimeA.shutdown
+      cleanupSocket carolSocketPath
+      cleanupSocket aliceSocketPath
+
+@[test]
 def testRuntimeTraceEncoderToggle : IO Unit := do
   let payload : Capnp.Rpc.Payload := mkNullPayload
   let runtime ← Capnp.Rpc.Runtime.init
@@ -7063,6 +7174,93 @@ def testRuntimeVatNetworkPeerRuntimeMismatchForSturdyRefOps : IO Unit := do
   finally
     runtimeA.shutdown
     runtimeB.shutdown
+
+@[test]
+def testRuntimeSocketThreePartyHandoffStaysProxied : IO Unit := do
+  let payload : Capnp.Rpc.Payload := mkNullPayload
+  let (aliceAddress, aliceSocketPath) ← mkUnixTestAddress
+  let (carolAddress, carolSocketPath) ← mkUnixTestAddress
+  let aliceRuntime ← Capnp.Rpc.Runtime.init
+  let carolRuntime ← Capnp.Rpc.Runtime.init
+  let bobRuntime ← Capnp.Rpc.Runtime.init
+  let carolStopped ← IO.mkRef false
+  let cleanupSocket (path : String) : IO Unit := do
+    try
+      IO.FS.removeFile path
+    catch _ =>
+      pure ()
+  try
+    cleanupSocket aliceSocketPath
+    cleanupSocket carolSocketPath
+
+    let aliceBootstrap ← aliceRuntime.registerEchoTarget
+    let aliceServer ← aliceRuntime.newServer aliceBootstrap
+    let aliceListener ← aliceServer.listen aliceAddress
+
+    let carolToAliceClient ← carolRuntime.newClient aliceAddress
+    aliceServer.accept aliceListener
+    let aliceCapViaCarol ← carolToAliceClient.bootstrap
+
+    let carolBootstrap ← carolRuntime.registerHandlerTarget (fun _ method req => do
+      if method.interfaceId == Echo.interfaceId && method.methodId == Echo.fooMethodId then
+        pure (mkCapabilityPayload aliceCapViaCarol)
+      else
+        pure req)
+    let carolServer ← carolRuntime.newServer carolBootstrap
+    let carolListener ← carolServer.listen carolAddress
+
+    let bobToCarolClient ← bobRuntime.newClient carolAddress
+    carolServer.accept carolListener
+    let carolCap ← bobToCarolClient.bootstrap
+
+    let handoffResponse ← Capnp.Rpc.RuntimeM.run bobRuntime do
+      Echo.callFooM carolCap payload
+    assertEqual handoffResponse.capTable.caps.size 1
+
+    let handedOffCap? := Capnp.readCapabilityFromTable handoffResponse.capTable
+      (Capnp.getRoot handoffResponse.msg)
+    assertEqual handedOffCap?.isSome true
+    let handedOffCap ←
+      match handedOffCap? with
+      | some cap => pure cap
+      | none => throw (IO.userError "socket handoff response missing expected capability")
+
+    let warmup ← bobRuntime.callResult handedOffCap Echo.fooMethod payload
+    match warmup with
+    | .ok response =>
+        assertEqual response.capTable.caps.size 0
+    | .error ex =>
+        throw (IO.userError
+          s!"expected handed-off socket capability call to succeed before intermediary shutdown, got: {ex.type}: {ex.description}")
+
+    let disconnectPromise ← bobToCarolClient.onDisconnectStart
+    -- Current TwoPartyVatNetwork socket transport keeps the handed-off capability behind Carol.
+    -- If real third-party introduction is added here later, this assertion should flip.
+    carolRuntime.shutdown
+    carolStopped.set true
+    disconnectPromise.await
+
+    let afterCarolShutdown ← bobRuntime.callResult handedOffCap Echo.fooMethod payload
+    match afterCarolShutdown with
+    | .ok _ =>
+        throw (IO.userError
+          "expected handed-off socket capability to disconnect after intermediary shutdown")
+    | .error ex =>
+        assertEqual ex.type .disconnected
+
+    bobRuntime.releaseCapTable handoffResponse.capTable
+    bobRuntime.releaseTarget carolCap
+    bobToCarolClient.release
+    aliceRuntime.releaseListener aliceListener
+    aliceServer.release
+    aliceRuntime.releaseTarget aliceBootstrap
+  finally
+    bobRuntime.shutdown
+    if !(← carolStopped.get) then
+      carolRuntime.shutdown
+    aliceRuntime.shutdown
+    cleanupSocket aliceSocketPath
+    cleanupSocket carolSocketPath
 
 @[test]
 def testRuntimeMultiVatThirdPartyTokenStats : IO Unit := do

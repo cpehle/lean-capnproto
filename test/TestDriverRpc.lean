@@ -58,6 +58,7 @@ private def parityCriticalTests : Array Lean.Name := #[
   `testRuntimeAsyncClientLifecyclePrimitives,
   `testRuntimeClientOnDisconnectAfterServerRelease,
   `testRuntimeDisconnectVisibilityViaCallResult,
+  `testRuntimeSocketThreePartyHandoffStaysProxied,
   `testInteropLeanClientObservesCppDisconnectAfterOneShot,
 
   -- Failure propagation and cancellation sequencing.
