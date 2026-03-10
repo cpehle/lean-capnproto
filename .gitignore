@@ -1,0 +1,28 @@
+# Lean 4 / Lake
+.lake/
+lake-packages/
+*.olean
+*.ilean
+*.c
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.hash
+*.trace
+
+# CMake / native builds
+/build/
+/cmake-build-*/
+/compile_commands.json
+
+# Test outputs
+test/out/
+test/LeanTest/.lake/
+
+# OS/IDEs
+.DS_Store
+.vscode/
+.idea/
+.elisp-not-ready
