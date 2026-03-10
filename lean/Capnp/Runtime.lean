@@ -1862,11 +1862,10 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
     return { seg := seg, dataOff := start, dataWords := dataWords,
              ptrOff := start + dataWords, ptrCount := ptrCount }
   else
-    let (seg, padStart) ← allocWords (total + 2)
-    let objStart := padStart + 2
-    writeWordLE p.seg p.word (encodeFarPointer true seg padStart)
-    writeWordLE seg padStart (encodeFarPointer false seg objStart)
-    writeWordLE seg (padStart + 1) (encodeStructPointer 0 dataWords ptrCount)
+    let (seg, padStart) ← allocWords (total + 1)
+    let objStart := padStart + 1
+    writeWordLE p.seg p.word (encodeFarPointer false seg padStart)
+    writeWordLE seg padStart (encodeStructPointer 0 dataWords ptrCount)
     return { seg := seg, dataOff := objStart, dataWords := dataWords,
              ptrOff := objStart + dataWords, ptrCount := ptrCount }
 
@@ -1893,22 +1892,21 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
     return { seg := seg, startWord := start, elemSize := elemSize, elemCount := elemCount,
              structDataWords := 0, structPtrCount := 0, inlineComposite := false }
   else
-    let (seg, padStart) ← allocWords (words + 2)
-    let objStart := padStart + 2
-    writeWordLE p.seg p.word (encodeFarPointer true seg padStart)
-    writeWordLE seg padStart (encodeFarPointer false seg objStart)
-    writeWordLE seg (padStart + 1) (encodeListPointer 0 elemSize elemCount)
+    let (seg, padStart) ← allocWords (words + 1)
+    let objStart := padStart + 1
+    writeWordLE p.seg p.word (encodeFarPointer false seg padStart)
+    writeWordLE seg padStart (encodeListPointer 0 elemSize elemCount)
     return { seg := seg, startWord := objStart, elemSize := elemSize, elemCount := elemCount,
              structDataWords := 0, structPtrCount := 0, inlineComposite := false }
 
 @[inline] def initStructListPointer (p : AnyPointerBuilder)
     (dataWords : Nat) (ptrCount : Nat) (elemCount : Nat) : BuilderM ListBuilder := do
   let elemWords := dataWords + ptrCount
-  let listWordCount := 1 + elemCount * elemWords
+  let listWordCount := elemCount * elemWords
   let st ← get
   let cap := segmentWordCapacity (st.segments.getD st.currentSeg ByteArray.empty)
-  if p.seg == st.currentSeg && st.nextWord + listWordCount <= cap then
-    let (seg, start) ← allocWords listWordCount
+  if p.seg == st.currentSeg && st.nextWord + 1 + listWordCount <= cap then
+    let (seg, start) ← allocWords (1 + listWordCount)
     let off : Int := (Int.ofNat start) - (Int.ofNat (p.word + 1))
     writeWordLE p.seg p.word (encodeListPointer off elemSizeInlineComposite listWordCount)
     writeWordLE seg start (encodeStructTag elemCount dataWords ptrCount)
@@ -1917,10 +1915,9 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
              structPtrCount := ptrCount, inlineComposite := true }
   else
     let (seg, padStart) ← allocWords (listWordCount + 2)
-    let objStart := padStart + 2
-    writeWordLE p.seg p.word (encodeFarPointer true seg padStart)
-    writeWordLE seg padStart (encodeFarPointer false seg objStart)
-    writeWordLE seg (padStart + 1) (encodeListPointer 0 elemSizeInlineComposite listWordCount)
+    let objStart := padStart + 1
+    writeWordLE p.seg p.word (encodeFarPointer false seg padStart)
+    writeWordLE seg padStart (encodeListPointer 0 elemSizeInlineComposite listWordCount)
     writeWordLE seg objStart (encodeStructTag elemCount dataWords ptrCount)
     return { seg := seg, startWord := objStart + 1, elemSize := elemSizeInlineComposite,
              elemCount := elemCount, structDataWords := dataWords,
