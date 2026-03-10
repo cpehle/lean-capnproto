@@ -2377,6 +2377,9 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_echo_target(
   }
 
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(lean_box_uint32(rpc::registerLoopbackTargetInline(*runtime)));
+    }
     auto completion = rpc::enqueueRegisterLoopbackTarget(*runtime);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);
@@ -2403,6 +2406,10 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_loopback_tar
   }
 
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(
+          lean_box_uint32(rpc::registerLoopbackTargetInline(*runtime, bootstrapTarget)));
+    }
     auto completion = rpc::enqueueRegisterLoopbackTarget(*runtime, bootstrapTarget);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);
@@ -2429,6 +2436,10 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_handler_targ
   }
 
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(lean_box_uint32(
+          rpc::registerHandlerTargetInline(*runtime, const_cast<lean_object*>(handler))));
+    }
     auto completion = rpc::enqueueRegisterHandlerTarget(*runtime, handler);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);
@@ -2455,6 +2466,10 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_advanced_han
   }
 
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(lean_box_uint32(
+          rpc::registerAdvancedHandlerTargetInline(*runtime, const_cast<lean_object*>(handler))));
+    }
     auto completion = rpc::enqueueRegisterAdvancedHandlerTarget(*runtime, handler);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);
@@ -2482,6 +2497,10 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_tailcall_han
   }
 
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(lean_box_uint32(
+          rpc::registerTailCallHandlerTargetInline(*runtime, const_cast<lean_object*>(handler))));
+    }
     auto completion = rpc::enqueueRegisterTailCallHandlerTarget(*runtime, handler);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);
@@ -2509,6 +2528,10 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_tailcall_tar
   }
 
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(
+          lean_box_uint32(rpc::registerTailCallTargetInline(*runtime, target)));
+    }
     auto completion = rpc::enqueueRegisterTailCallTarget(*runtime, target);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);
@@ -2535,6 +2558,9 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_fd_target(
   }
 
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(lean_box_uint32(rpc::registerFdTargetInline(*runtime, fd)));
+    }
     auto completion = rpc::enqueueRegisterFdTarget(*runtime, fd);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);
@@ -3530,6 +3556,9 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_fd_probe_tar
   auto runtime = getRuntime(runtimeId);
   if (!runtime) return mkIoUserError("Capnp.Rpc runtime handle is invalid");
   try {
+    if (rpc::isWorkerThread(*runtime)) {
+      return lean_io_result_mk_ok(lean_box_uint32(rpc::registerFdProbeTargetInline(*runtime)));
+    }
     auto completion = rpc::enqueueRegisterFdProbeTarget(*runtime);
     {
       std::unique_lock<std::mutex> lock(completion->mutex);

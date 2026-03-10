@@ -20,6 +20,14 @@ bool isWorkerThread(const RuntimeLoop& runtime);
 uint32_t retainTargetInline(RuntimeLoop& runtime, uint32_t target);
 void releaseTargetInline(RuntimeLoop& runtime, uint32_t target);
 void releaseTargetsInline(RuntimeLoop& runtime, const std::vector<uint32_t>& targets);
+uint32_t registerLoopbackTargetInline(RuntimeLoop& runtime);
+uint32_t registerLoopbackTargetInline(RuntimeLoop& runtime, uint32_t bootstrapTarget);
+uint32_t registerHandlerTargetInline(RuntimeLoop& runtime, lean_object* handler);
+uint32_t registerAdvancedHandlerTargetInline(RuntimeLoop& runtime, lean_object* handler);
+uint32_t registerTailCallHandlerTargetInline(RuntimeLoop& runtime, lean_object* handler);
+uint32_t registerTailCallTargetInline(RuntimeLoop& runtime, uint32_t target);
+uint32_t registerFdTargetInline(RuntimeLoop& runtime, uint32_t fd);
+uint32_t registerFdProbeTargetInline(RuntimeLoop& runtime);
 
 std::pair<uint32_t, uint32_t> newPromiseCapabilityInline(RuntimeLoop& runtime);
 void promiseCapabilityFulfillInline(RuntimeLoop& runtime, uint32_t fulfillerId, uint32_t target);

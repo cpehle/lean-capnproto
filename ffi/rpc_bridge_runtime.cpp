@@ -2362,6 +2362,46 @@ class RuntimeLoop {
     releaseTargets(targets);
   }
 
+  uint32_t registerLoopbackTargetInline() {
+    auto* ioProvider = ioProvider_;
+    if (ioProvider == nullptr) {
+      throw std::runtime_error("RPC runtime is not ready for loopback target registration");
+    }
+    return registerLoopbackTarget(*ioProvider);
+  }
+
+  uint32_t registerLoopbackTargetInline(uint32_t bootstrapTarget) {
+    auto* ioProvider = ioProvider_;
+    if (ioProvider == nullptr) {
+      throw std::runtime_error("RPC runtime is not ready for loopback target registration");
+    }
+    return registerLoopbackTarget(*ioProvider, bootstrapTarget);
+  }
+
+  uint32_t registerHandlerTargetInline(lean_object* handler) {
+    return registerHandlerTarget(handler);
+  }
+
+  uint32_t registerAdvancedHandlerTargetInline(lean_object* handler) {
+    return registerAdvancedHandlerTarget(handler);
+  }
+
+  uint32_t registerTailCallHandlerTargetInline(lean_object* handler) {
+    return registerTailCallHandlerTarget(handler);
+  }
+
+  uint32_t registerTailCallTargetInline(uint32_t target) {
+    return registerTailCallTarget(target);
+  }
+
+  uint32_t registerFdTargetInline(uint32_t fd) {
+    return registerFdTarget(fd);
+  }
+
+  uint32_t registerFdProbeTargetInline() {
+    return registerFdProbeTarget();
+  }
+
   std::pair<uint32_t, uint32_t> newPromiseCapabilityInline() {
     return newPromiseCapability();
   }
@@ -4820,58 +4860,80 @@ class RuntimeLoop {
     return addRegisterPromise(PendingRegisterPromise(kj::mv(promise), kj::mv(canceler)));
   }
 
-  uint32_t awaitRegisterPromise(kj::WaitScope& waitScope, uint32_t promiseId) {
+  PendingRegisterPromise takeRegisterPromiseForAwait(uint32_t promiseId) {
     auto it = registerPromises_.find(promiseId);
     if (it == registerPromises_.end()) {
       throw std::runtime_error("unknown RPC register promise id: " + std::to_string(promiseId));
     }
     auto pending = kj::mv(it->second);
     registerPromises_.erase(it);
-    pending.canceler->release();
-    return kj::mv(pending.promise).wait(waitScope);
+    return pending;
   }
 
   void cancelRegisterPromise(uint32_t promiseId) {
     auto it = registerPromises_.find(promiseId);
-    if (it == registerPromises_.end()) {
-      throw std::runtime_error("unknown RPC register promise id: " + std::to_string(promiseId));
+    if (it != registerPromises_.end()) {
+      it->second.canceler->cancel("Capnp.Rpc register promise canceled from Lean");
+      return;
     }
-    it->second.canceler->cancel("Capnp.Rpc register promise canceled from Lean");
+    auto activeIt = activeRegisterPromiseCancelers_.find(promiseId);
+    if (activeIt != activeRegisterPromiseCancelers_.end()) {
+      activeIt->second->cancel("Capnp.Rpc register promise canceled from Lean");
+      return;
+    }
+    throw std::runtime_error("unknown RPC register promise id: " + std::to_string(promiseId));
   }
 
   void releaseRegisterPromise(uint32_t promiseId) {
     auto it = registerPromises_.find(promiseId);
-    if (it == registerPromises_.end()) {
-      throw std::runtime_error("unknown RPC register promise id: " + std::to_string(promiseId));
+    if (it != registerPromises_.end()) {
+      registerPromises_.erase(it);
+      return;
     }
-    registerPromises_.erase(it);
+    auto activeIt = activeRegisterPromiseCancelers_.find(promiseId);
+    if (activeIt != activeRegisterPromiseCancelers_.end()) {
+      activeRegisterPromiseCancelers_.erase(activeIt);
+      return;
+    }
+    throw std::runtime_error("unknown RPC register promise id: " + std::to_string(promiseId));
   }
 
-  void awaitUnitPromise(kj::WaitScope& waitScope, uint32_t promiseId) {
+  PendingUnitPromise takeUnitPromiseForAwait(uint32_t promiseId) {
     auto it = unitPromises_.find(promiseId);
     if (it == unitPromises_.end()) {
       throw std::runtime_error("unknown RPC unit promise id: " + std::to_string(promiseId));
     }
     auto pending = kj::mv(it->second);
     unitPromises_.erase(it);
-    pending.canceler->release();
-    kj::mv(pending.promise).wait(waitScope);
+    return pending;
   }
 
   void cancelUnitPromise(uint32_t promiseId) {
     auto it = unitPromises_.find(promiseId);
-    if (it == unitPromises_.end()) {
-      throw std::runtime_error("unknown RPC unit promise id: " + std::to_string(promiseId));
+    if (it != unitPromises_.end()) {
+      it->second.canceler->cancel("Capnp.Rpc unit promise canceled from Lean");
+      return;
     }
-    it->second.canceler->cancel("Capnp.Rpc unit promise canceled from Lean");
+    auto activeIt = activeUnitPromiseCancelers_.find(promiseId);
+    if (activeIt != activeUnitPromiseCancelers_.end()) {
+      activeIt->second->cancel("Capnp.Rpc unit promise canceled from Lean");
+      return;
+    }
+    throw std::runtime_error("unknown RPC unit promise id: " + std::to_string(promiseId));
   }
 
   void releaseUnitPromise(uint32_t promiseId) {
     auto it = unitPromises_.find(promiseId);
-    if (it == unitPromises_.end()) {
-      throw std::runtime_error("unknown RPC unit promise id: " + std::to_string(promiseId));
+    if (it != unitPromises_.end()) {
+      unitPromises_.erase(it);
+      return;
     }
-    unitPromises_.erase(it);
+    auto activeIt = activeUnitPromiseCancelers_.find(promiseId);
+    if (activeIt != activeUnitPromiseCancelers_.end()) {
+      activeUnitPromiseCancelers_.erase(activeIt);
+      return;
+    }
+    throw std::runtime_error("unknown RPC unit promise id: " + std::to_string(promiseId));
   }
 
   uint32_t registerHandlerTarget(lean_object* handler) {
@@ -6205,6 +6267,36 @@ class RuntimeLoop {
                 }));
           };
 
+      auto scheduleRegisterPromiseCompletion =
+          [this, &tasks](uint32_t promiseId, PendingRegisterPromise&& pending,
+                         const std::shared_ptr<RegisterTargetCompletion>& completion) mutable {
+            activeRegisterPromiseCancelers_[promiseId] = kj::mv(pending.canceler);
+            tasks.add(kj::mv(pending.promise).then(
+                [this, promiseId, completion](uint32_t targetId) mutable {
+                  activeRegisterPromiseCancelers_.erase(promiseId);
+                  completeRegisterSuccess(completion, targetId);
+                },
+                [this, promiseId, completion](kj::Exception&& e) mutable {
+                  activeRegisterPromiseCancelers_.erase(promiseId);
+                  completeRegisterFailure(completion, describeKjException(e));
+                }));
+          };
+
+      auto scheduleUnitPromiseCompletion =
+          [this, &tasks](uint32_t promiseId, PendingUnitPromise&& pending,
+                         const std::shared_ptr<UnitCompletion>& completion) mutable {
+            activeUnitPromiseCancelers_[promiseId] = kj::mv(pending.canceler);
+            tasks.add(kj::mv(pending.promise).then(
+                [this, promiseId, completion]() mutable {
+                  activeUnitPromiseCancelers_.erase(promiseId);
+                  completeUnitSuccess(completion);
+                },
+                [this, promiseId, completion](kj::Exception&& e) mutable {
+                  activeUnitPromiseCancelers_.erase(promiseId);
+                  completeUnitFailure(completion, describeKjException(e));
+                }));
+          };
+
       while (true) {
         QueuedOperation op;
         bool haveOp = false;
@@ -7272,8 +7364,9 @@ class RuntimeLoop {
         } else if (std::holds_alternative<QueuedAwaitRegisterPromise>(op)) {
           auto promise = std::get<QueuedAwaitRegisterPromise>(std::move(op));
           try {
-            auto id = awaitRegisterPromise(io.waitScope, promise.promiseId);
-            completeRegisterSuccess(promise.completion, id);
+            auto pending = takeRegisterPromiseForAwait(promise.promiseId);
+            scheduleRegisterPromiseCompletion(
+                promise.promiseId, kj::mv(pending), promise.completion);
           } catch (const kj::Exception& e) {
             completeRegisterFailure(promise.completion, describeKjException(e));
           } catch (const std::exception& e) {
@@ -7314,8 +7407,9 @@ class RuntimeLoop {
         } else if (std::holds_alternative<QueuedAwaitUnitPromise>(op)) {
           auto promise = std::get<QueuedAwaitUnitPromise>(std::move(op));
           try {
-            awaitUnitPromise(io.waitScope, promise.promiseId);
-            completeUnitSuccess(promise.completion);
+            auto pending = takeUnitPromiseForAwait(promise.promiseId);
+            scheduleUnitPromiseCompletion(
+                promise.promiseId, kj::mv(pending), promise.completion);
           } catch (const kj::Exception& e) {
             completeUnitFailure(promise.completion, describeKjException(e));
           } catch (const std::exception& e) {
@@ -8443,6 +8537,8 @@ class RuntimeLoop {
   std::deque<std::weak_ptr<DeferredLeanTaskState>> activeCancelableDeferredTasks_;
   std::unordered_map<uint32_t, PendingRegisterPromise> registerPromises_;
   std::unordered_map<uint32_t, PendingUnitPromise> unitPromises_;
+  std::unordered_map<uint32_t, kj::Own<kj::Canceler>> activeRegisterPromiseCancelers_;
+  std::unordered_map<uint32_t, kj::Own<kj::Canceler>> activeUnitPromiseCancelers_;
   std::unordered_map<uint32_t, PendingUnitPromise> kjAsyncPromises_;
   std::unordered_set<uint32_t> retiredKjAsyncPromises_;
   std::unordered_map<uint32_t, kj::Own<RuntimeKjAsyncTaskSet>> kjAsyncTaskSets_;
@@ -8536,6 +8632,38 @@ void releaseTargetInline(RuntimeLoop& runtime, uint32_t target) { runtime.releas
 
 void releaseTargetsInline(RuntimeLoop& runtime, const std::vector<uint32_t>& targets) {
   runtime.releaseTargetsInline(targets);
+}
+
+uint32_t registerLoopbackTargetInline(RuntimeLoop& runtime) {
+  return runtime.registerLoopbackTargetInline();
+}
+
+uint32_t registerLoopbackTargetInline(RuntimeLoop& runtime, uint32_t bootstrapTarget) {
+  return runtime.registerLoopbackTargetInline(bootstrapTarget);
+}
+
+uint32_t registerHandlerTargetInline(RuntimeLoop& runtime, lean_object* handler) {
+  return runtime.registerHandlerTargetInline(handler);
+}
+
+uint32_t registerAdvancedHandlerTargetInline(RuntimeLoop& runtime, lean_object* handler) {
+  return runtime.registerAdvancedHandlerTargetInline(handler);
+}
+
+uint32_t registerTailCallHandlerTargetInline(RuntimeLoop& runtime, lean_object* handler) {
+  return runtime.registerTailCallHandlerTargetInline(handler);
+}
+
+uint32_t registerTailCallTargetInline(RuntimeLoop& runtime, uint32_t target) {
+  return runtime.registerTailCallTargetInline(target);
+}
+
+uint32_t registerFdTargetInline(RuntimeLoop& runtime, uint32_t fd) {
+  return runtime.registerFdTargetInline(fd);
+}
+
+uint32_t registerFdProbeTargetInline(RuntimeLoop& runtime) {
+  return runtime.registerFdProbeTargetInline();
 }
 
 std::pair<uint32_t, uint32_t> newPromiseCapabilityInline(RuntimeLoop& runtime) {
