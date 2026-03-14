@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file="${1:?missing commit message file}"
+
+# Ignore comments and blank lines; validate first real subject line.
+subject="$(sed -e 's/\r$//' "${msg_file}" | sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' | head -n1)"
+
+if [ -z "${subject}" ]; then
+  echo "commit-msg: empty commit subject." >&2
+  exit 1
+fi
+
+# Allow git-generated merge/revert commits.
+if [[ "${subject}" =~ ^Merge\  ]] || [[ "${subject}" =~ ^Revert\  ]]; then
+  exit 0
+fi
+
+pattern='^(feat|fix|chore|ci|build|docs|refactor|test|perf)\([a-z0-9][a-z0-9._/-]*\): .+'
+if [[ ! "${subject}" =~ ${pattern} ]]; then
+  cat >&2 <<'EOF'
+commit-msg: invalid subject format.
+Expected: type(scope): summary
+Examples:
+  feat(runtime): add packed reader bounds checks
+  fix(rpc): guard null client hook in shutdown path
+EOF
+  echo "Got: ${subject}" >&2
+  exit 1
+fi
+
+exit 0

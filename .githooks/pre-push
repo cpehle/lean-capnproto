@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Validate commit subjects before push using the same checker as CI.
+
+repo_root="$(git rev-parse --show-toplevel)"
+checker="${repo_root}/scripts/check-commit-messages.sh"
+
+if [ ! -x "${checker}" ]; then
+  echo "pre-push: missing executable checker at ${checker}" >&2
+  exit 1
+fi
+
+remote_name="${1:-}"
+zero40="0000000000000000000000000000000000000000"
+pending_file="$(mktemp)"
+cleanup() {
+  rm -f "${pending_file}"
+}
+trap cleanup EXIT
+
+remote_scope_label="${remote_name:-<direct-url>}"
+remote_tracking_refs=()
+if [[ -n "${remote_name}" ]] && git remote get-url "${remote_name}" >/dev/null 2>&1; then
+  while IFS= read -r ref; do
+    remote_tracking_refs+=("${ref}")
+  done < <(git for-each-ref --format='%(refname)' "refs/remotes/${remote_name}/*")
+fi
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ -z "${local_ref:-}" ]]; then
+    continue
+  fi
+  if [[ "${local_sha}" == "${zero40}" ]]; then
+    continue
+  fi
+
+  if ! local_commit="$(git rev-parse --verify "${local_sha}^{commit}" 2>/dev/null)"; then
+    echo "pre-push: skipping ${local_ref} -> ${remote_ref}; ${local_sha} does not resolve to a commit." >&2
+    continue
+  fi
+
+  if [[ "${remote_sha}" != "${zero40}" ]] && remote_commit="$(git rev-parse --verify "${remote_sha}^{commit}" 2>/dev/null)"; then
+    echo "pre-push: collecting commits for ${local_ref} -> ${remote_ref} (${remote_commit}..${local_commit})"
+    git rev-list --reverse "${remote_commit}..${local_commit}" >> "${pending_file}"
+    continue
+  fi
+
+  if [[ "${remote_sha}" == "${zero40}" ]]; then
+    echo "pre-push: collecting commits for new ref ${local_ref} -> ${remote_ref}"
+  else
+    echo "pre-push: remote tip ${remote_sha} for ${remote_ref} not available locally; using ${remote_scope_label} tracking refs fallback." >&2
+  fi
+
+  if [[ "${#remote_tracking_refs[@]}" -gt 0 ]]; then
+    git rev-list --reverse "${local_commit}" --not "${remote_tracking_refs[@]}" >> "${pending_file}"
+  else
+    echo "pre-push: no tracking refs for ${remote_scope_label}; validating full history reachable from ${local_ref}." >&2
+    git rev-list --reverse "${local_commit}" >> "${pending_file}"
+  fi
+done
+
+validated_any=0
+while IFS= read -r commit; do
+  if [[ -z "${commit}" ]]; then
+    continue
+  fi
+  echo "pre-push: validating commit subject for ${commit}"
+  "${checker}" "${commit}^!"
+  validated_any=1
+done < <(awk '!seen[$0]++' "${pending_file}")
+
+if [[ "${validated_any}" -eq 0 ]]; then
+  echo "pre-push: no commits to validate."
+fi
+
+exit 0

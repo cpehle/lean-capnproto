@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            curl \
+            git \
+            libssl-dev \
+            ninja-build \
+            pkg-config \
+            zlib1g-dev
+
+      - name: Install elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Lean toolchain
+        run: |
+          elan toolchain install "$(cat lean-toolchain)"
+          elan default "$(cat lean-toolchain)"
+
+      - name: Build Cap'n Proto
+        run: |
+          cmake -S extern/capnproto/c++ -B extern/capnproto/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TESTING=ON
+          cmake --build extern/capnproto/build --parallel
+
+      - name: Build capnpc-lean4 plugin
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/extern/capnproto/build/c++"
+          cmake --build build --parallel
+
+      - name: Generate Lean schema fixtures
+        run: |
+          export PATH="$PWD/build:$PWD/extern/capnproto/build/c++/src/capnp:$PATH"
+          ./scripts/generate-test-schemas.sh
+
+      - name: Build Lean targets
+        run: lake build
+
+      - name: Run Lean tests
+        run: lake test

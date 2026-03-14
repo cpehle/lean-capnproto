@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Basic staged-content hygiene checks.
+
+ws_errors="$(git diff --cached --check || true)"
+if [ -n "${ws_errors}" ]; then
+  echo "pre-commit: staged whitespace errors detected (trailing space / bad newlines)." >&2
+  echo "${ws_errors}" >&2
+  exit 1
+fi
+
+# Prevent accidental conflict markers in staged files.
+if [ "$(git diff --cached --name-only -z --diff-filter=ACMR | wc -c | tr -d ' ')" != "0" ]; then
+  if git diff --cached --name-only -z --diff-filter=ACMR \
+    | xargs -0 git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- >/dev/null 2>&1; then
+    echo "pre-commit: conflict markers found in staged files." >&2
+    echo "Resolve conflicts before committing." >&2
+    exit 1
+  fi
+fi
+
+exit 0

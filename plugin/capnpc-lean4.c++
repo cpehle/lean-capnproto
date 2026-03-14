@@ -12,7 +12,7 @@
 #include <kj/string-tree.h>
 #include <kj/vector.h>
 
-#include "../schema-loader.h"
+#include <capnp/schema-loader.h>
 
 #include <algorithm>
 #include <cctype>
