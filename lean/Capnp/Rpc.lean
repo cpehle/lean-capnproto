@@ -2605,6 +2605,18 @@ instance : Capnp.Async.Awaitable RuntimePendingCallRef Payload where
 instance : Capnp.Async.Releasable RuntimePendingCallRef where
   release := RuntimePendingCallRef.release
 
+@[inline] def awaitAndRelease (pendingCall : RuntimePendingCallRef) : IO Payload := do
+  try
+    pendingCall.await
+  finally
+    pendingCall.release
+
+@[inline] def awaitPayloadRefAndRelease (pendingCall : RuntimePendingCallRef) : IO RuntimePayloadRef := do
+  try
+    pendingCall.awaitPayloadRef
+  finally
+    pendingCall.release
+
 @[inline] def awaitAsTask (pendingCall : RuntimePendingCallRef) :
     IO (Task (Except IO.Error Payload)) :=
   Capnp.Async.awaitAsTask pendingCall
