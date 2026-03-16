@@ -2679,6 +2679,12 @@ namespace RuntimeRegisterPromiseRef
 @[inline] def awaitTarget (promise : RuntimeRegisterPromiseRef) : IO Client :=
   promise.await
 
+@[inline] def awaitTargetAndRelease (promise : RuntimeRegisterPromiseRef) : IO Client := do
+  try
+    promise.awaitTarget
+  finally
+    promise.release
+
 @[inline] def awaitClient (promise : RuntimeRegisterPromiseRef) : IO RuntimeClientRef := do
   return {
     runtime := promise.runtime
