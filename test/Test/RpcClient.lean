@@ -3,10 +3,10 @@ import Capnp.Rpc
 import Capnp.RpcKjAsync
 import Capnp.KjAsync
 import Test.Common
-import Capnp.Gen.test.lean4.fixtures.rpc_echo
+import Capnp.Gen.fixtures.rpc_echo
 
 open LeanTest
-open Capnp.Gen.test.lean4.fixtures.rpc_echo
+open Capnp.Gen.fixtures.rpc_echo
 
 private def registerEchoFooCallOrderTarget (runtime : Capnp.Rpc.Runtime) :
     IO (Capnp.Rpc.Client × IO UInt64) := do

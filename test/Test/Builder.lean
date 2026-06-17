@@ -1,11 +1,11 @@
 import LeanTest
 import Capnp.Runtime
-import Capnp.Gen.test.lean4.addressbook
-import Capnp.Gen.test.lean4.fixtures.defaults
+import Capnp.Gen.addressbook
+import Capnp.Gen.fixtures.defaults
 
 open LeanTest
-open Capnp.Gen.test.lean4.addressbook
-open Capnp.Gen.test.lean4.fixtures.defaults
+open Capnp.Gen.addressbook
+open Capnp.Gen.fixtures.defaults
 
 def buildAddressBookMessage : Capnp.Message :=
   let init := Capnp.initMessageBuilder 32

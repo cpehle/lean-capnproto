@@ -1,9 +1,9 @@
 import LeanTest
 import Capnp.Runtime
-import Capnp.Gen.test.lean4.fixtures.capability
+import Capnp.Gen.fixtures.capability
 
 open LeanTest
-open Capnp.Gen.test.lean4.fixtures.capability
+open Capnp.Gen.fixtures.capability
 
 def buildCapHolderMessage : Capnp.Message :=
   let init := Capnp.initMessageBuilder 16

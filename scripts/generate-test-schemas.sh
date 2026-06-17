@@ -19,6 +19,15 @@ fi
 mkdir -p "${out_dir}"
 out_dir="$(cd "$(dirname "${out_dir}")" && pwd)/$(basename "${out_dir}")"
 
+case "${out_dir}" in
+  ""|"/")
+    echo "refusing to use unsafe output directory: ${out_dir}" >&2
+    exit 2
+    ;;
+esac
+rm -rf "${out_dir}"
+mkdir -p "${out_dir}"
+
 (
   cd test
   "${capnp_bin}" compile \
@@ -43,3 +52,23 @@ out_dir="$(cd "$(dirname "${out_dir}")" && pwd)/$(basename "${out_dir}")"
     capnp/rpc-twoparty.capnp \
     capnp/stream.capnp
 )
+
+expected_outputs=(
+  "Capnp/Gen/addressbook.lean"
+  "Capnp/Gen/fixtures/defaults.lean"
+  "Capnp/Gen/fixtures/capability.lean"
+  "Capnp/Gen/fixtures/rpc_echo.lean"
+  "Capnp/Gen/capnp/test.lean"
+  "Capnp/Gen/capnp/rpc.lean"
+  "Capnp/Gen/capnp/rpc_twoparty.lean"
+  "Capnp/Gen/capnp/stream.lean"
+)
+
+missing=0
+for generated in "${expected_outputs[@]}"; do
+  if [[ ! -f "${out_dir}/${generated}" ]]; then
+    echo "missing generated schema output: ${out_dir}/${generated}" >&2
+    missing=1
+  fi
+done
+exit "${missing}"

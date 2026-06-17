@@ -1,10 +1,10 @@
 import LeanTest
 import Capnp.Rpc
 import Test.Common
-import Capnp.Gen.test.lean4.fixtures.rpc_echo
+import Capnp.Gen.fixtures.rpc_echo
 
 open LeanTest
-open Capnp.Gen.test.lean4.fixtures.rpc_echo
+open Capnp.Gen.fixtures.rpc_echo
 
 private def countTraceTag (trace : Array Capnp.Rpc.ProtocolMessageTraceTag)
     (tag : Capnp.Rpc.ProtocolMessageTraceTag) : Nat :=

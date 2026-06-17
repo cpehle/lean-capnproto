@@ -1,9 +1,9 @@
 import LeanTest
 import Capnp.Runtime
-import Capnp.Gen.test.lean4.fixtures.defaults
+import Capnp.Gen.fixtures.defaults
 
 open LeanTest
-open Capnp.Gen.test.lean4.fixtures.defaults
+open Capnp.Gen.fixtures.defaults
 
 private def loadMessage (path : String) : IO Capnp.Message := do
   let bytes ← IO.FS.readBinFile path

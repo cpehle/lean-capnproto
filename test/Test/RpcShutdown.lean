@@ -2,10 +2,10 @@ import LeanTest
 import Capnp.Rpc
 import Capnp.KjAsync
 import Test.Common
-import Capnp.Gen.test.lean4.fixtures.rpc_echo
+import Capnp.Gen.fixtures.rpc_echo
 
 open LeanTest
-open Capnp.Gen.test.lean4.fixtures.rpc_echo
+open Capnp.Gen.fixtures.rpc_echo
 
 @[test]
 def testRuntimeAdvancedHandlerRejectsRpcShutdownOnWorkerThread : IO Unit := do

@@ -1,4 +1,4 @@
-import Capnp.Gen.test.lean4.addressbook
+import Capnp.Gen.addressbook
 
 def main : IO Unit :=
   pure ()

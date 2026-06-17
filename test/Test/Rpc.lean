@@ -1,9 +1,9 @@
 import LeanTest
 import Capnp.Runtime
-import Capnp.Gen.c__.src.capnp.rpc
+import Capnp.Gen.capnp.rpc
 
 open LeanTest
-open Capnp.Gen.c__.src.capnp.rpc
+open Capnp.Gen.capnp.rpc
 
 private def buildMessage (act : Capnp.BuilderM Unit) : Capnp.Message :=
   let init := Capnp.initMessageBuilder 8

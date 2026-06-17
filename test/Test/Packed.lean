@@ -1,10 +1,10 @@
 import LeanTest
 import Capnp.Runtime
 import Test.Builder
-import Capnp.Gen.test.lean4.fixtures.defaults
+import Capnp.Gen.fixtures.defaults
 
 open LeanTest
-open Capnp.Gen.test.lean4.fixtures.defaults
+open Capnp.Gen.fixtures.defaults
 
 @[test]
 def testPackRoundtrip : IO Unit := do

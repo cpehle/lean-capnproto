@@ -1,11 +1,11 @@
 import LeanTest
 import Capnp.Runtime
-import Capnp.Gen.c__.src.capnp.test
+import Capnp.Gen.capnp.test
 
 set_option maxHeartbeats 2000000
 
 open LeanTest
-open Capnp.Gen.c__.src.capnp.test
+open Capnp.Gen.capnp.test
 
 private def testdataPath (name : String) : String :=
   "../../c++/src/capnp/testdata/" ++ name

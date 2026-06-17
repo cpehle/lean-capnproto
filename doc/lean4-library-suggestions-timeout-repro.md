@@ -33,7 +33,7 @@ rm -f .lake/build/lib/lean/Capnp/Gen/c__/src/capnp/test.olean \
       .lake/build/ir/Capnp/Gen/c__/src/capnp/test.setup.json \
       .lake/build/ir/Capnp/Gen/c__/src/capnp/test.c.o \
       .lake/build/ir/Capnp/Gen/c__/src/capnp/test.c.o.export
-lake build Capnp.Gen.c__.src.capnp.test
+lake build Capnp.Gen.capnp.test
 ```
 
 Observed output includes:
@@ -67,4 +67,4 @@ Observed output includes:
   avoids the large generated module in normal RPC/backend iteration.
 - The full driver remains available as `lake build test_full` (or running the `test_full` binary),
   and still reproduces this tooling issue when it must compile
-  `Capnp.Gen.c__.src.capnp.test`.
+  `Capnp.Gen.capnp.test`.
