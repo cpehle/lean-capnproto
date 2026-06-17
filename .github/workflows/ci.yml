@@ -10,8 +10,8 @@ jobs:
   build-and-test:
     runs-on: ubuntu-22.04
     env:
-      CC: clang-18
-      CXX: clang++-18
+      CC: clang-19
+      CXX: clang++-19
       CXXFLAGS: -stdlib=libc++
       LDFLAGS: -stdlib=libc++
 
@@ -28,17 +28,17 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
             | gpg --dearmor \
             | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.gpg >/dev/null
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" \
-            | sudo tee /etc/apt/sources.list.d/llvm-toolchain-jammy-18.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm-toolchain-jammy-19.list
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
-            clang-18 \
+            clang-19 \
             cmake \
             curl \
             git \
-            libc++-18-dev \
-            libc++abi-18-dev \
+            libc++-19-dev \
+            libc++abi-19-dev \
             libssl-dev \
             ninja-build \
             pkg-config \
