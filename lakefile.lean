@@ -74,15 +74,15 @@ private def linuxLibcxxIncludeArgs : Array String :=
     "-I/usr/include"
   ]
 
-private def linuxSystemLibraryArgs : Array String :=
+private def linuxSystemLibraryPath (name : String) : String :=
   let archLib :=
     if System.Platform.target.contains "aarch64" then
       "/usr/lib/aarch64-linux-gnu"
     else if System.Platform.target.contains "x86_64" then
       "/usr/lib/x86_64-linux-gnu"
-  else
-    "/usr/lib"
-  #["-L", archLib]
+    else
+      "/usr/lib"
+  s!"{archLib}/{name}"
 
 private def linuxGnuCxxCMakeFlags (pkgDir : FilePath) : String :=
   String.intercalate " " <|
@@ -107,15 +107,14 @@ def capnpBridgeLinkArgs (pkgDir : FilePath) : Array String :=
   else
     #[
       "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "capnp").toString,
-      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString
-    ] ++ linuxSystemLibraryArgs ++ #[
+      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString,
       "-lcapnp-rpc", "-lcapnp", "-lkj-http", "-lkj-gzip", "-lkj-tls", "-lkj-async", "-lkj",
-      "-lssl", "-lcrypto"
+      linuxSystemLibraryPath "libssl.so", linuxSystemLibraryPath "libcrypto.so"
     ] ++
       if useLibcxx then
-        #["-lc++", "-lc++abi", "-lz", "-pthread"]
+        #["-lc++", "-lc++abi", linuxSystemLibraryPath "libz.so", "-pthread"]
       else
-        #["-lstdc++", "-lz", "-pthread"]
+        #["-lstdc++", linuxSystemLibraryPath "libz.so", "-pthread"]
 
 def capnpBridgeCompileArgs : Array String :=
   if System.Platform.isOSX then
