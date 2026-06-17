@@ -55,10 +55,11 @@
       "Test.RpcClient.testRuntimeAsyncClientLifecyclePrimitives",
       "Test.RpcClient.testRuntimeClientOnDisconnectAfterServerRelease",
       "Test.RpcClient.testRuntimeDisconnectVisibilityViaCallResult",
+      "Test.RpcClient.testRuntimeSocketThreePartyHandoffStaysProxied",
       "Test.RpcClient.testInteropLeanClientObservesCppDisconnectAfterOneShot"
     ],
     "status": "covered",
-    "notes": "Lean runtime and interop tests cover connect/bootstrap/disconnect visibility and cleanup."
+    "notes": "Lean runtime and interop tests cover connect/bootstrap/disconnect visibility, proxied socket handoff behavior, and cleanup."
   },
   {
     "behaviorClass": "Reliability abort and failure propagation",

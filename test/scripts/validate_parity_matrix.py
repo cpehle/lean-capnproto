@@ -27,6 +27,10 @@ def _parse_test_declarations(tests_dir: Path, errors: list[str]) -> set[str]:
     decl_re = re.compile(r"^\s*(?:private\s+)?(?:unsafe\s+)?(?:def|theorem)\s+([A-Za-z0-9_']+)\b")
     declarations: set[str] = set()
 
+    if not tests_dir.is_dir():
+        errors.append(f"{tests_dir}: missing test directory")
+        return declarations
+
     for file_path in sorted(tests_dir.glob("*.lean")):
         module_name = f"Test.{file_path.stem}"
         lines = file_path.read_text(encoding="utf-8").splitlines()
@@ -113,7 +117,7 @@ def _resolve_short_names(
         matches = by_short.get(short_name, [])
         if not matches:
             errors.append(
-                f"{driver_path}: parityCriticalTests entry `{short_name}` does not resolve to any @[test] declaration in test/lean4/Test/*.lean"
+                f"{driver_path}: parityCriticalTests entry `{short_name}` does not resolve to any @[test] declaration in test/Test/*.lean"
             )
             continue
         if len(matches) > 1:
@@ -228,10 +232,10 @@ def _validate_matrix_entries(
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parents[3]
-    matrix_path = repo_root / "test" / "lean4" / "parity_matrix.json"
-    driver_path = repo_root / "test" / "lean4" / "TestDriverRpc.lean"
-    tests_dir = repo_root / "test" / "lean4" / "Test"
+    repo_root = Path(__file__).resolve().parents[2]
+    matrix_path = repo_root / "test" / "parity_matrix.json"
+    driver_path = repo_root / "test" / "TestDriverRpc.lean"
+    tests_dir = repo_root / "test" / "Test"
     errors: list[str] = []
 
     try:
@@ -274,7 +278,7 @@ def main() -> int:
         for err in errors:
             print(f"- {err}")
         print(
-            "Fix by updating test declarations in test/lean4/TestDriverRpc.lean and/or test/lean4/parity_matrix.json."
+            "Fix by updating test declarations in test/TestDriverRpc.lean and/or test/parity_matrix.json."
         )
         return 1
 
