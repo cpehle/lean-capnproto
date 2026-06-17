@@ -80,13 +80,9 @@ private def linuxSystemLibraryArgs : Array String :=
       "/usr/lib/aarch64-linux-gnu"
     else if System.Platform.target.contains "x86_64" then
       "/usr/lib/x86_64-linux-gnu"
-    else
-      "/usr/lib"
-  #[
-    "-L", archLib,
-    "-L", "/usr/lib/llvm-18/lib",
-    "-L", "/usr/lib/llvm-19/lib"
-  ]
+  else
+    "/usr/lib"
+  #["-L", archLib]
 
 private def linuxGnuCxxCMakeFlags (pkgDir : FilePath) : String :=
   String.intercalate " " <|
