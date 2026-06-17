@@ -2,7 +2,7 @@
 Copyright (c) 2026 The Cap'n Proto Authors.
 Released under the MIT License.
 
-Test driver for LeanTest-based checks in test/lean4.
+Test driver for LeanTest-based checks in test/.
 -/
 
 import LeanTest

@@ -9,8 +9,8 @@ Use this mapping when deciding where a change belongs.
 - Shared async helper or lifecycle combinator:
   - Layer 3 (`Capnp.Async`).
 - New network primitive (TCP/UDP/HTTP/WebSocket):
-  - Layer 4 (`Capnp.KjAsync` + `test/lean4/c/kj_async_bridge.cpp`) + Layer 7 tests.
+  - Layer 4 (`Capnp.KjAsync` + `ffi/kj_async_bridge.cpp`) + Layer 7 tests.
 - New RPC primitive (handlers/pipelining/topology):
-  - Layer 5 (`Capnp.Rpc` + `test/lean4/c/rpc_bridge_runtime.cpp`) + Layer 7 tests.
+  - Layer 5 (`Capnp.Rpc` + `ffi/rpc_bridge_runtime.cpp`) + Layer 7 tests.
 - Mixed RPC + KJ ergonomics:
   - Layer 6 (`Capnp.RpcKjAsync`).

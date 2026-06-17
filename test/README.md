@@ -1,55 +1,41 @@
-# Lean4 golden test (capnpc-lean4)
+# Lean4 schema and RPC tests
 
-This is a tiny golden test for the Lean4 backend.
+This directory contains the generated-schema fixtures and Lean test drivers for
+the Lean4 backend.
 
-## Generate output and compare
+## Generate schema fixtures
 
 From the repo root:
 
 ```sh
-# Build capnp + capnpc-lean4 first (CMake or Bazel).
-capnp compile \
-  -o lean4:test/lean4/out \
-  --src-prefix . \
-  -I c++/src \
-  -I test/lean4 \
-  test/lean4/addressbook.capnp \
-  test/lean4/fixtures/defaults.capnp \
-  test/lean4/fixtures/capability.capnp \
-  test/lean4/fixtures/rpc_echo.capnp \
-  c++/src/capnp/test.capnp \
-  c++/src/capnp/rpc.capnp \
-  c++/src/capnp/rpc-twoparty.capnp \
-  c++/src/capnp/stream.capnp
-
-diff -u \
-  test/lean4/expected/Capnp/Gen/test/lean4/addressbook.lean \
-  test/lean4/out/Capnp/Gen/test/lean4/addressbook.lean
+lake build capnpNativeDeps
+export PATH="$PWD/extern/capnproto/build/c++/src/capnp:$PATH"
+./scripts/generate-test-schemas.sh
 ```
 
-## Compile with Lake
+Generated modules are written under `test/out/`, which is ignored by git.
+If you maintain local golden files under `test/expected/`, compare them with:
 
 ```sh
-cd test/lean4
-lake test
+diff -ru test/expected test/out
 ```
 
-The `lake` project uses:
-- `../../lean` for `Capnp.Runtime`
-- `out/` for generated files
-- `src/` for a tiny `Main.lean`
+## Build and test
 
-## CTest integration
-
-If you build with CMake, you can run the same Lean4 flow with:
+From the repo root:
 
 ```sh
-cmake -S . -B build -DCAPNP_ENABLE_LEAN4_TESTS=ON
-cmake --build build
-ctest --test-dir build -R capnp-lean4-tests -V
+lake build
+lake test -- --parity-critical
 ```
+
+For a broader local sweep, run `lake test` without `--parity-critical`.
 
 ## RPC parity artifact
 
-`test/lean4/parity_matrix.json` is the machine-readable Lean/C++ RPC behavior-class parity map
-used by `doc/lean4-rpc-plan.md`.
+`test/parity_matrix.json` is the machine-readable Lean/C++ RPC behavior-class
+parity map used by `doc/lean4-rpc-plan.md`. Validate it with:
+
+```sh
+python3 test/scripts/validate_parity_matrix.py
+```

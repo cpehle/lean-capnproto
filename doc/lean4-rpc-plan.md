@@ -99,7 +99,7 @@ Out-of-scope or not yet explicitly planned for parity:
 ### M0: Plan Hygiene (Immediate)
 
 - Update this plan on every parity-affecting merge.
-- Add a machine-readable parity checklist artifact in `test/lean4/`.
+- Add a machine-readable parity checklist artifact in `test/`.
 
 Exit criteria:
 - every parity claim in this document links to concrete Lean test coverage.
@@ -114,7 +114,7 @@ Exit criteria:
 - all P0/P1 behavior classes mapped and passing in Lean CI.
 
 M1 seed matrix status (`2026-02-23`):
-- [x] Explicit behavior-class matrix exists in `test/lean4/parity_matrix.json`.
+- [x] Explicit behavior-class matrix exists in `test/parity_matrix.json`.
 - [x] Core call/return + release/cancel class is `covered`.
 - [x] Ordering-sensitive class is `covered`.
 - [x] Transport connect/listen/disconnect class is `covered`.
@@ -128,7 +128,7 @@ Behavior-class mapping table:
 | --- | --- | --- | --- | --- |
 | Core call/return and release/cancel semantics | `rpc-test.c++`: `basics`, `release capability`, `release capabilities when canceled during return`, `cancellation` | `testRpcReleaseMessageRoundtrip`, `testRpcReturnCanceled`, `testRuntimePendingCallRelease`, `testRuntimeParityAdvancedDeferredReleaseWithoutAllowCancellation` | `covered` | Message-level and runtime-level release/cancel semantics are exercised. |
 | Ordering-sensitive pipelining/resolve/disembargo/tail-call | `rpc-test.c++`: `pipelining`, `resolve promise`, `embargo`, `embargo error`, `don't embargo null capability`, `tail call`; `rpc-twoparty-test.c++`: `Two-hop embargo` | `testRuntimeParityResolvePipelineOrdering`, `testRuntimeParityDisembargoNullPipelineDoesNotDisconnect`, `testRuntimeParityEmbargoErrorKeepsConnectionAlive`, `testRuntimeParityTailCallPipelineOrdering`, `testRuntimeParityAdvancedDeferredSetPipelineOrdering`, `testRuntimeTwoHopPipelinedResolveOrdering`, `testRuntimeTwoHopPipelinedResolveOrderingWithNestedPromise`, `testRuntimeProtocolResolveDisembargoMessageCounters`, `testRuntimeProtocolNullPipelineDoesNotEmitDisembargo` | `covered` | Ordering-sensitive classes are covered with runtime and protocol-trace assertions, including null-pipeline and embargo-error paths. |
-| Transport connect/listen/disconnect lifecycle | `rpc-test.c++`: `loopback bootstrap()`, `clean connection shutdown`, `connections set idle when appropriate` | `testRuntimeAsyncClientLifecyclePrimitives`, `testRuntimeClientOnDisconnectAfterServerRelease`, `testRuntimeDisconnectVisibilityViaCallResult`, `testInteropLeanClientObservesCppDisconnectAfterOneShot` | `covered` | Lean runtime and interop tests cover connect/bootstrap/disconnect visibility and cleanup. |
+| Transport connect/listen/disconnect lifecycle | `rpc-test.c++`: `loopback bootstrap()`, `clean connection shutdown`, `connections set idle when appropriate` | `testRuntimeAsyncClientLifecyclePrimitives`, `testRuntimeClientOnDisconnectAfterServerRelease`, `testRuntimeDisconnectVisibilityViaCallResult`, `testRuntimeSocketThreePartyHandoffStaysProxied`, `testInteropLeanClientObservesCppDisconnectAfterOneShot` | `covered` | Lean runtime and interop tests cover connect/bootstrap/disconnect visibility, proxied socket handoff behavior, and cleanup. |
 | Reliability abort and failure propagation | `rpc-test.c++`: `abort`, `call promise that later rejects`, `handles exceptions thrown during disconnect`, `disconnection exception retains details`, `method throws exception with detail` | `testRuntimeParityCancelDisconnectSequencing`, `testRuntimeParityPromisedCapabilityDelayedRejectPropagatesToPendingCalls`, `testRuntimeParityPromisedCapabilityCancelBeforeRejectSequencing`, `testRuntimeTransportAbortPendingCall`, `testRuntimeProtocolDisconnectDetail`, `testInteropLeanClientCancelsPendingCallToCppDelayedServer`, `testInteropLeanPendingCallOutcomeCapturesCppException`, `testInteropLeanClientReceivesCppExceptionDetail` | `covered` | Abort/cancel/failure propagation and remote exception detail retention are covered in both Lean runtime tests and Lean<->C++ interop tests. |
 | Flow control and trace observability | `rpc-test.c++`: `connections set idle when appropriate`, `method throws exception with trace encoder` | `testRuntimeClientQueueMetrics`, `testRuntimeClientQueueMetricsPreAcceptBacklogDrains`, `testRuntimeProtocolDiagnostics`, `testRuntimeClientSetFlowLimit`, `testRuntimeTraceEncoderToggle`, `testRuntimeSetTraceEncoderOnExistingConnection`, `testRuntimeTraceEncoderCallResultVisibility` | `covered` | Queue/flow/trace and internal diagnostics surfaces are covered with direct runtime checks. |
 | Advanced streaming and FD transfer | `rpc-twoparty-test.c++`: `Streaming over RPC`, `Streaming over RPC no premature cancellation when client dropped`, `send FD over RPC`, `FD per message limit` | `testRuntimeStreamingCall`, `testRuntimeRegisterStreamingHandlerTarget`, `testRuntimeStreamingCancellation`, `testRuntimeStreamingNoPrematureCancellationWhenTargetDropped`, `testRuntimeStreamingForwardedAcrossMultiVatNoPrematureCancellation`, `testRuntimeStreamingChainedBackpressure`, `testRuntimeFdPassingOverNetwork`, `testRuntimeFdPerMessageLimitDropsExcessFds`, `testRuntimeFdTargetLocalGetFd` | `covered` | Streaming semantics (including no-premature-cancel and forwarding/backpressure) plus FD transfer and per-message limits are covered. |
@@ -163,7 +163,7 @@ Exit criteria:
 
 - Gate parity-critical tests in CI for Linux and macOS.
 - Publish user-facing docs for recommended Lean RPC/KjAsync patterns.
-- Deterministic parity command: `cd test/lean4 && lake test -- --parity-critical`.
+- Deterministic parity command: `lake test -- --parity-critical`.
 
 Exit criteria:
 - deterministic parity CI and documented supported feature matrix.

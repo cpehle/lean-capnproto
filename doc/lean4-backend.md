@@ -70,7 +70,7 @@ capnp compile \
   -o lean4:path/to/out \
   --src-prefix path/to/repo-root \
   -I path/to/repo-root/c++/src \
-  -I path/to/repo-root/test/lean4 \
+  -I path/to/repo-root/test \
   path/to/schema.capnp
 ```
 
@@ -79,7 +79,7 @@ Use `--src-prefix` to keep output module paths deterministic across machines.
 
 ## Golden test
 
-See `test/lean4/README.md` for a small addressbook schema and a Lake build check.
+See `test/README.md` for schema-fixture generation and Lake build checks.
 
 ## Open questions
 

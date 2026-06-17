@@ -3,7 +3,7 @@
 ## Summary
 
 Compiling the large generated Lean module
-`test/lean4/out/Capnp/Gen/c__/src/capnp/test.lean`
+`test/out/Capnp/Gen/c__/src/capnp/test.lean`
 can emit deterministic panics from Lean's library-suggestion export path:
 
 - `Lean.LibrarySuggestions.SymbolFrequency`
@@ -27,7 +27,6 @@ Notably, the build still reports success (`Build completed successfully`).
 From repo root:
 
 ```bash
-cd test/lean4
 rm -f .lake/build/lib/lean/Capnp/Gen/c__/src/capnp/test.olean \
       .lake/build/lib/lean/Capnp/Gen/c__/src/capnp/test.ilean \
       .lake/build/ir/Capnp/Gen/c__/src/capnp/test.c \
@@ -62,7 +61,7 @@ Observed output includes:
 3. Determine whether the panic should fail the build (or be converted to warning) for consistency.
 4. Profile symbol-frequency and sine-qua-non export on large generated modules.
 
-## Current Workaround in `test/lean4`
+## Current Workaround
 
 - `lake test` now uses a fast test driver (`TestDriverRpc`) that excludes conformance tests and
   avoids the large generated module in normal RPC/backend iteration.

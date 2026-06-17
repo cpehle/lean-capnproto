@@ -75,7 +75,7 @@ Legend: `[x]` done, `[~]` partial, `[ ]` open.
 ## Test and Acceptance Gates
 
 For each new surface:
-- API tests in `test/lean4/Test/KjAsync.lean` (unit shape + error behavior)
+- API tests in `test/Test/KjAsync.lean` (unit shape + error behavior)
 - integration tests with C++ bridge where lifetimes or ownership cross FFI
 - parity notes linked back to the relevant C++ header surface (`kj/async.h`,
   `kj/async-io.h`, `kj/compat/http.h`, platform-specific runtime pieces)
