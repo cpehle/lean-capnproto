@@ -74,6 +74,20 @@ private def linuxLibcxxIncludeArgs : Array String :=
     "-I/usr/include"
   ]
 
+private def linuxSystemLibraryArgs : Array String :=
+  let archLib :=
+    if System.Platform.target.contains "aarch64" then
+      "/usr/lib/aarch64-linux-gnu"
+    else if System.Platform.target.contains "x86_64" then
+      "/usr/lib/x86_64-linux-gnu"
+    else
+      "/usr/lib"
+  #[
+    "-L", archLib,
+    "-L", "/usr/lib/llvm-18/lib",
+    "-L", "/usr/lib/llvm-19/lib"
+  ]
+
 private def linuxGnuCxxCMakeFlags (pkgDir : FilePath) : String :=
   String.intercalate " " <|
     (#["-stdlib=libstdc++"] ++ linuxGnuCxxIncludeArgs ++ #[
@@ -97,7 +111,8 @@ def capnpBridgeLinkArgs (pkgDir : FilePath) : Array String :=
   else
     #[
       "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "capnp").toString,
-      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString,
+      "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString
+    ] ++ linuxSystemLibraryArgs ++ #[
       "-lcapnp-rpc", "-lcapnp", "-lkj-http", "-lkj-gzip", "-lkj-tls", "-lkj-async", "-lkj",
       "-lssl", "-lcrypto"
     ] ++
