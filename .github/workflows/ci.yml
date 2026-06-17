@@ -38,11 +38,16 @@ jobs:
           elan default "$(cat lean-toolchain)"
 
       - name: Prepare Cap'n Proto source
+        env:
+          CAPNP_SOURCE_REPO: https://github.com/cpehle/capnproto.git
+          CAPNP_SOURCE_REF: feat/lean-plugin
+          CAPNP_SOURCE_SHA: 480c7cde4be9931c35936ca6f9a64d015569962f
         run: |
           if [ ! -d extern/capnproto/c++ ]; then
             rm -f extern/capnproto
-            git clone --depth 1 https://github.com/capnproto/capnproto.git extern/capnproto
+            git clone --depth 1 --branch "$CAPNP_SOURCE_REF" "$CAPNP_SOURCE_REPO" extern/capnproto
           fi
+          test "$(git -C extern/capnproto rev-parse HEAD)" = "$CAPNP_SOURCE_SHA"
 
       - name: Build Cap'n Proto
         run: |
