@@ -110,7 +110,6 @@ def capnpBridgeLinkArgs (pkgDir : FilePath) : Array String :=
       "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString,
       "-lcapnp-rpc", "-lcapnp", "-lkj-http", "-lkj-gzip", "-lkj-tls", "-lkj-async", "-lkj",
       linuxSystemLibraryPath "libssl.so", linuxSystemLibraryPath "libcrypto.so",
-      linuxSystemLibraryPath "libdl.so", linuxSystemLibraryPath "libpthread.so",
       linuxSystemLibraryPath "libc.so"
     ] ++
       if useLibcxx then
