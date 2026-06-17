@@ -109,13 +109,13 @@ def capnpBridgeLinkArgs (pkgDir : FilePath) : Array String :=
       "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "capnp").toString,
       "-L", (pkgDir / "extern" / "capnproto" / "build" / "c++" / "src" / "kj").toString,
       "-lcapnp-rpc", "-lcapnp", "-lkj-http", "-lkj-gzip", "-lkj-tls", "-lkj-async", "-lkj",
-      linuxSystemLibraryPath "libssl.so", linuxSystemLibraryPath "libcrypto.so",
-      linuxSystemLibraryPath "libc.so"
+      linuxSystemLibraryPath "libssl.so", linuxSystemLibraryPath "libcrypto.so"
     ] ++
-      if useLibcxx then
+      (if useLibcxx then
         #["-lc++", "-lc++abi", linuxSystemLibraryPath "libz.so", "-pthread"]
       else
-        #["-lstdc++", linuxSystemLibraryPath "libz.so", "-pthread"]
+        #["-lstdc++", linuxSystemLibraryPath "libz.so", "-pthread"])
+      ++ #["-Wl,--allow-shlib-undefined"]
 
 def capnpBridgeCompileArgs : Array String :=
   if System.Platform.isOSX then
