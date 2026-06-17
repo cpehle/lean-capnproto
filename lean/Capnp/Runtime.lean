@@ -1699,9 +1699,7 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
   if h : byteOff < ba.size then
     let i := byteOff.toUSize
     have h' : i.toNat < ba.size := by
-      have hmod : byteOff % (2 ^ System.Platform.numBits) < ba.size := by
-        exact Nat.lt_of_le_of_lt (Nat.mod_le _ _) h
-      simpa [USize.toNat_ofNat'] using hmod
+      simpa [i] using Nat.lt_of_le_of_lt (toUSizeToNatLe byteOff) h
     ba.uset i b h'
   else
     ba.set! byteOff b

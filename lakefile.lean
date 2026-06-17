@@ -268,6 +268,7 @@ target libleanrpcbridge pkg : FilePath := do
     bridgeO, bridgeRuntimeO, bridgeCommonO, bridgePayloadRefO, bridgeGenericVatO, kjAsyncBridgeO
   ]
 
+@[default_target]
 lean_lib CapnpRuntime where
   srcDir := "lean"
   roots := #[`Capnp.Runtime]
