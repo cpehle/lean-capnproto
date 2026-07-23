@@ -2656,13 +2656,13 @@ class KjAsyncRuntimeLoop {
   };
 
   struct RuntimeHttpRequestBody {
-    kj::Own<kj::AsyncOutputStream> stream;
     std::shared_ptr<RuntimeHttpClientOwner> owner;
+    kj::Own<kj::AsyncOutputStream> stream;
   };
 
   struct RuntimeHttpResponseBody {
-    kj::Own<kj::AsyncInputStream> stream;
     std::shared_ptr<RuntimeHttpClientOwner> owner;
+    kj::Own<kj::AsyncInputStream> stream;
   };
 
   struct RuntimeHttpServerRequestBody {
@@ -3685,7 +3685,7 @@ class KjAsyncRuntimeLoop {
       requestBodyId = nextHttpRequestBodyId_++;
     }
     httpRequestBodies_.emplace(
-        requestBodyId, RuntimeHttpRequestBody{kj::mv(stream), std::move(owner)});
+        requestBodyId, RuntimeHttpRequestBody{std::move(owner), kj::mv(stream)});
     return requestBodyId;
   }
 
@@ -3696,7 +3696,7 @@ class KjAsyncRuntimeLoop {
       responseBodyId = nextHttpResponseBodyId_++;
     }
     httpResponseBodies_.emplace(
-        responseBodyId, RuntimeHttpResponseBody{kj::mv(stream), std::move(owner)});
+        responseBodyId, RuntimeHttpResponseBody{std::move(owner), kj::mv(stream)});
     return responseBodyId;
   }
 
