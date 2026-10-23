@@ -144,6 +144,7 @@
       "Test.RpcShutdown.testRuntimeAdvancedHandlerRejectsRpcShutdownOnWorkerThread",
       "Test.RpcShutdown.testRuntimeAdvancedHandlerRejectsKjAsyncShutdownOnWorkerThread",
       "Test.RpcShutdown.testKjAsyncShutdownReleasesRpcRuntimeHandle",
+      "Test.RpcShutdown.testRuntimeConcurrentStartupAndShutdown",
       "Test.RpcClient.testRuntimeKjAsyncSleepAsTaskAndPromiseHelpers",
       "Test.RpcClient.testRuntimeAsyncFFIPump"
     ],
