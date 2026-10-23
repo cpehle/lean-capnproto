@@ -70,3 +70,28 @@ def testKjAsyncShutdownReleasesRpcRuntimeHandle : IO Unit := do
   kjRuntime.shutdown
   assertEqual (← runtime.isAlive) false
   runtime.shutdown
+
+/-- Start both native event-loop implementations concurrently and reuse their
+storage repeatedly. The worker must not observe members before construction
+finishes, and each initialized loop must execute queued work and stop cleanly. -/
+@[test]
+def testRuntimeConcurrentStartupAndShutdown : IO Unit := do
+  let mut workers := #[]
+  try
+    for _ in [:4] do
+      let worker ← IO.asTask (prio := .dedicated) do
+        for _ in [:64] do
+          let rpc ← Capnp.Rpc.Runtime.init
+          try
+            assertEqual (← rpc.isAlive) true
+            rpc.pump
+          finally rpc.shutdown
+          let kj ← Capnp.KjAsync.Runtime.init
+          try
+            assertEqual (← kj.isAlive) true
+            kj.sleepMillis 0
+          finally kj.shutdown
+      workers := workers.push worker
+    for worker in workers do IO.ofExcept (← IO.wait worker)
+  finally
+    for worker in workers do let _ ← IO.wait worker
