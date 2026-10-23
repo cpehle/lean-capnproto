@@ -659,10 +659,17 @@ class KjAsyncRuntimeLoop {
     uint32_t webSocketCompressionMode = 0;
   };
 
-  KjAsyncRuntimeLoop() : worker_(&KjAsyncRuntimeLoop::run, this) {
+  KjAsyncRuntimeLoop() {
+    // run() accesses members declared after worker_. Start only after every
+    // member (including the startup handshake) has been initialized.
+    worker_ = std::thread(&KjAsyncRuntimeLoop::run, this);
     std::unique_lock<std::mutex> lock(startupMutex_);
     startupCv_.wait(lock, [this]() { return startupComplete_; });
     if (!startupError_.empty()) {
+      lock.unlock();
+      worker_.join();
+      // A throwing constructor does not run our destructor. Join first so
+      // destruction of worker_ cannot terminate the process.
       throw std::runtime_error(startupError_);
     }
   }

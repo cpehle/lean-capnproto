@@ -103,6 +103,7 @@ private def parityCriticalTests : Array Lean.Name := #[
   `testRuntimeAdvancedHandlerRejectsRpcShutdownOnWorkerThread,
   `testRuntimeAdvancedHandlerRejectsKjAsyncShutdownOnWorkerThread,
   `testKjAsyncShutdownReleasesRpcRuntimeHandle,
+  `testRuntimeConcurrentStartupAndShutdown,
   `testRuntimeKjAsyncSleepAsTaskAndPromiseHelpers,
   `testRuntimeAsyncFFIPump,
 
