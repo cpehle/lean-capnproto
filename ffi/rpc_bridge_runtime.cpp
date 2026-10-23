@@ -3957,7 +3957,11 @@ class RuntimeLoop {
         auto action = decodeOwnedAction(actionObj);
         return action;
       }
-      return kj::yield().then([this, taskState]() mutable {
+      // An always-ready yield loop keeps KJ's event queue nonempty and can
+      // starve socket polling until the Lean task finishes. Wait on a timer so
+      // other RPC requests can arrive while this handler remains outstanding.
+      return runtime_.ioProvider_->getTimer().afterDelay(1 * kj::MILLISECONDS)
+          .then([this, taskState]() mutable {
         return waitLeanActionTask(taskState);
       });
     }

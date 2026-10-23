@@ -140,6 +140,7 @@
       "Test.KjAsync.testRpcRuntimeRunKjAsyncBridgeHelpers",
       "Test.KjAsync.testRpcRuntimeMWithKjAsyncRuntimeHelpers",
       "Test.RpcClient.testRuntimeAdvancedHandlerStartsKjAsyncPromisesOnSameRuntime",
+      "Test.RpcClient.testRuntimeAdvancedDeferredHandlerAllowsNetworkProgress",
       "Test.RpcClient.testRuntimeAdvancedHandlerRejectsKjAsyncAwaitOnWorkerThread",
       "Test.RpcShutdown.testRuntimeAdvancedHandlerRejectsRpcShutdownOnWorkerThread",
       "Test.RpcShutdown.testRuntimeAdvancedHandlerRejectsKjAsyncShutdownOnWorkerThread",
