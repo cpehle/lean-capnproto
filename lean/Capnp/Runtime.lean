@@ -931,8 +931,15 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
 @[inline] def readStructChecked (p : AnyPointer) : Except String StructReader :=
   decodeStructPtrChecked p
 
+/-- Fields absent from an older or null struct read as null. Use an actual
+zero pointer word so checked readers also accept the missing field. -/
 @[inline] def getPointer (r : StructReader) (index : Nat) : AnyPointer :=
-  { msg := r.msg, seg := r.seg, word := r.ptrOff + index }
+  if index < r.ptrCount then
+    { msg := r.msg, seg := r.seg, word := r.ptrOff + index }
+  else
+    let bytes := ByteArray.mk #[0, 0, 0, 0, 0, 0, 0, 0]
+    let zero : SegmentView := { bytes, off := 0, len := 8, h := by decide }
+    { msg := { segments := #[zero] }, seg := 0, word := 0 }
 
 @[inline] def isNullPointer (p : AnyPointer) : Bool :=
   readWord p.msg p.seg p.word == 0
@@ -951,7 +958,7 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
   v == 1
 
 @[inline] def getBool (r : StructReader) (bitOff : Nat) : Bool :=
-  getBit r.msg r.seg (r.dataOff * 64 + bitOff)
+  bitOff < r.dataWords * 64 && getBit r.msg r.seg (r.dataOff * 64 + bitOff)
 
 @[inline] def getBoolMasked (r : StructReader) (bitOff : Nat) (mask : Bool) : Bool :=
   let v := getBool r bitOff
@@ -978,25 +985,33 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
     return acc
 
 @[inline] def getUInt8 (r : StructReader) (byteOff : Nat) : UInt8 :=
-  readByte r.msg r.seg (dataByteOff r byteOff)
+  if byteOff + 1 <= r.dataWords * 8 then
+    readByte r.msg r.seg (dataByteOff r byteOff)
+  else 0
 
 @[inline] def getUInt8Masked (r : StructReader) (byteOff : Nat) (mask : UInt8) : UInt8 :=
   (getUInt8 r byteOff) ^^^ mask
 
 @[inline] def getUInt16 (r : StructReader) (byteOff : Nat) : UInt16 :=
-  readUInt16 r.msg r.seg (dataByteOff r byteOff)
+  if byteOff + 2 <= r.dataWords * 8 then
+    readUInt16 r.msg r.seg (dataByteOff r byteOff)
+  else 0
 
 @[inline] def getUInt16Masked (r : StructReader) (byteOff : Nat) (mask : UInt16) : UInt16 :=
   (getUInt16 r byteOff) ^^^ mask
 
 @[inline] def getUInt32 (r : StructReader) (byteOff : Nat) : UInt32 :=
-  readUInt32 r.msg r.seg (dataByteOff r byteOff)
+  if byteOff + 4 <= r.dataWords * 8 then
+    readUInt32 r.msg r.seg (dataByteOff r byteOff)
+  else 0
 
 @[inline] def getUInt32Masked (r : StructReader) (byteOff : Nat) (mask : UInt32) : UInt32 :=
   (getUInt32 r byteOff) ^^^ mask
 
 @[inline] def getUInt64 (r : StructReader) (byteOff : Nat) : UInt64 :=
-  readUInt64 r.msg r.seg (dataByteOff r byteOff)
+  if byteOff + 8 <= r.dataWords * 8 then
+    readUInt64 r.msg r.seg (dataByteOff r byteOff)
+  else 0
 
 @[inline] def getUInt64Masked (r : StructReader) (byteOff : Nat) (mask : UInt64) : UInt64 :=
   (getUInt64 r byteOff) ^^^ mask
