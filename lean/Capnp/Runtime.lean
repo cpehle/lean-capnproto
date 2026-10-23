@@ -857,7 +857,9 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
     match toNat? (base + off) with
     | none => throw "pointer offset underflow"
     | some t =>
-        if t < segmentWordCount msg seg then
+        -- A zero-extent object may start at the segment end. The typed
+        -- struct/list reader separately checks its complete content extent.
+        if t <= segmentWordCount msg seg then
           return some { msg := msg, tagSeg := seg, tagWord := word,
                         targetSeg := seg, targetWord := t }
         else
@@ -885,7 +887,7 @@ def readMessagePackedChecked (opts : ReaderOptions) (bytes : ByteArray) : Except
       let targetWord := ((shr64 padWordBits 3) &&& 0x1fffffff).toNat
       if targetSeg >= p.msg.segments.size then
         throw "double-far target segment out of bounds"
-      if targetWord >= segmentWordCount p.msg targetSeg then
+      if targetWord > segmentWordCount p.msg targetSeg then
         throw "double-far target out of bounds"
       return some { msg := p.msg, tagSeg := padSeg, tagWord := padWord + 1,
                     targetSeg := targetSeg, targetWord := targetWord }
