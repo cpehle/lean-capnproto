@@ -5724,6 +5724,57 @@ def testRuntimeAdvancedHandlerDeferredCancellationDoesNotCarryAcrossCalls : IO U
   finally
     runtime.shutdown
 
+/-- A deferred Lean handler must not keep KJ from polling for subsequent requests.
+The watchdog only releases the gate on failure so a regression fails rather than hangs. -/
+@[test]
+def testRuntimeAdvancedDeferredHandlerAllowsNetworkProgress : IO Unit := do
+  let entered ← IO.mkRef false
+  let gate ← IO.mkRef false
+  let timedOut ← IO.mkRef false
+  let runtime ← Capnp.Rpc.Runtime.init
+  let (address, socketPath) ← mkUnixTestAddress
+  let watchdog ← IO.asTask do
+    for _ in [:500] do
+      if ← gate.get then return
+      IO.sleep 10
+    timedOut.set true
+    gate.set true
+  try
+    let bootstrap ← runtime.registerAdvancedHandlerTargetAsync (fun _ _ req => do
+      let value ← readUInt64Payload req
+      if value == 0 then
+        Capnp.Rpc.Advanced.defer do
+          entered.set true
+          while !(← gate.get) do IO.sleep 1
+          pure (Capnp.Rpc.Advanced.respond req)
+      else
+        gate.set true
+        pure (.now (Capnp.Rpc.Advanced.respond req)))
+    let server ← runtime.newServer bootstrap
+    let listener ← server.listen address
+    let client ← runtime.newClient address
+    server.accept listener
+    let remote ← client.bootstrap
+    let waiting ← runtime.startCall remote Echo.fooMethod (mkUInt64Payload 0)
+    -- Wait until the first request is outstanding before sending the next one;
+    -- putting both in one socket read would not exercise socket polling.
+    while !(← entered.get) && !(← timedOut.get) do
+      IO.sleep 1
+    let response ← Capnp.Rpc.RuntimeM.run runtime do
+      Echo.callFooM remote (mkUInt64Payload 1)
+    assertEqual (← readUInt64Payload response) 1
+    assertEqual (← timedOut.get) false
+    assertEqual (← readUInt64Payload (← waiting.await)) 0
+    client.release
+    server.release
+    runtime.releaseListener listener
+    runtime.releaseTarget bootstrap
+  finally
+    gate.set true
+    let _ ← IO.wait watchdog
+    runtime.shutdown
+    try IO.FS.removeFile socketPath catch _ => pure ()
+
 @[test]
 def testRuntimeAdvancedHandlerDeferredRespond : IO Unit := do
   let payload : Capnp.Rpc.Payload := mkNullPayload

@@ -39,6 +39,7 @@ private def parityCriticalTests : Array Lean.Name := #[
   `testRpcReturnCanceled,
   `testRuntimePendingCallRelease,
   `testRuntimeParityAdvancedDeferredReleaseWithoutAllowCancellation,
+  `testRuntimeAdvancedDeferredHandlerAllowsNetworkProgress,
 
   -- Ordering-sensitive resolve/disembargo/tail-call behavior.
   `testRuntimeParityResolvePipelineOrdering,
