@@ -611,6 +611,20 @@ class RuntimeLoop {
     return completion;
   }
 
+  std::shared_ptr<UnitCompletion> enqueueCancelPendingCall(uint32_t pendingCallId) {
+    auto completion = std::make_shared<UnitCompletion>();
+    {
+      std::lock_guard<std::mutex> lock(queueMutex_);
+      if (stopping_) {
+        completeUnitFailure(completion, "Capnp.Rpc runtime is shutting down");
+        return completion;
+      }
+      queue_.emplace_back(QueuedCancelPendingCall{pendingCallId, completion});
+    }
+    notifyWorker();
+    return completion;
+  }
+
   std::shared_ptr<RegisterTargetCompletion> enqueueGetPipelinedCap(
       uint32_t pendingCallId, std::vector<uint16_t> pointerPath) {
     auto completion = std::make_shared<RegisterTargetCompletion>();
@@ -2619,6 +2633,11 @@ class RuntimeLoop {
     std::shared_ptr<UnitCompletion> completion;
   };
 
+  struct QueuedCancelPendingCall {
+    uint32_t pendingCallId;
+    std::shared_ptr<UnitCompletion> completion;
+  };
+
   struct QueuedGetPipelinedCap {
     uint32_t pendingCallId;
     std::vector<uint16_t> pointerPath;
@@ -3273,7 +3292,7 @@ class RuntimeLoop {
       std::variant<QueuedRawCall, QueuedRawCallData, QueuedStartPendingCall,
                    QueuedStartPendingCallData, QueuedStartStreamingPendingCall,
                    QueuedStartStreamingPendingCallData, QueuedAwaitPendingCall,
-                   QueuedReleasePendingCall, QueuedGetPipelinedCap, QueuedStreamingCall,
+                   QueuedReleasePendingCall, QueuedCancelPendingCall, QueuedGetPipelinedCap, QueuedStreamingCall,
                    QueuedTargetGetFd, QueuedTargetWhenResolved, QueuedTargetWhenResolvedStart,
                    QueuedTargetWhenResolvedPoll,
                    QueuedEnableTraceEncoder,
@@ -5133,10 +5152,31 @@ class RuntimeLoop {
     }
     auto pending = kj::mv(pendingIt->second);
     pendingCalls_.erase(pendingIt);
-    pending.canceler->release();
-    return kj::mv(pending.promise).then([this](capnp::Response<capnp::AnyPointer>&& response) {
-      return kj::evalNow([this, &response]() { return serializeResponse(response); });
-    });
+    // Keep the exact call's canceler reachable while its await is in flight.
+    activePendingCallCancelers_[pendingCallId] = kj::mv(pending.canceler);
+    return kj::mv(pending.promise).then(
+        [this, pendingCallId](capnp::Response<capnp::AnyPointer>&& response) {
+          activePendingCallCancelers_.erase(pendingCallId);
+          return kj::evalNow([this, &response]() { return serializeResponse(response); });
+        },
+        [this, pendingCallId](kj::Exception&& error) -> kj::Promise<RawCallResult> {
+          activePendingCallCancelers_.erase(pendingCallId);
+          return kj::mv(error);
+        });
+  }
+
+  void cancelPendingCall(uint32_t pendingCallId) {
+    auto pending = pendingCalls_.find(pendingCallId);
+    if (pending != pendingCalls_.end()) {
+      pending->second.canceler->cancel("Capnp.Rpc pending call canceled from Lean");
+      return;
+    }
+    auto active = activePendingCallCancelers_.find(pendingCallId);
+    if (active != activePendingCallCancelers_.end()) {
+      active->second->cancel("Capnp.Rpc pending call canceled from Lean");
+      return;
+    }
+    throw std::runtime_error("unknown pending RPC call id: " + std::to_string(pendingCallId));
   }
 
   void releasePendingCall(uint32_t pendingCallId) {
@@ -6460,6 +6500,20 @@ class RuntimeLoop {
             completeUnitFailure(
                 release.completion,
                 "unknown exception in capnp_lean_rpc_runtime_pending_call_release");
+          }
+        } else if (std::holds_alternative<QueuedCancelPendingCall>(op)) {
+          auto release = std::get<QueuedCancelPendingCall>(std::move(op));
+          try {
+            cancelPendingCall(release.pendingCallId);
+            completeUnitSuccess(release.completion);
+          } catch (const kj::Exception& e) {
+            completeUnitFailure(release.completion, describeKjException(e));
+          } catch (const std::exception& e) {
+            completeUnitFailure(release.completion, e.what());
+          } catch (...) {
+            completeUnitFailure(
+                release.completion,
+                "unknown exception in capnp_lean_rpc_runtime_pending_call_cancel");
           }
         } else if (std::holds_alternative<QueuedGetPipelinedCap>(op)) {
           auto call = std::get<QueuedGetPipelinedCap>(std::move(op));
@@ -8249,6 +8303,8 @@ class RuntimeLoop {
         completeFailure(std::get<QueuedAwaitPendingCall>(op).completion, message);
       } else if (std::holds_alternative<QueuedReleasePendingCall>(op)) {
         completeUnitFailure(std::get<QueuedReleasePendingCall>(op).completion, message);
+      } else if (std::holds_alternative<QueuedCancelPendingCall>(op)) {
+        completeUnitFailure(std::get<QueuedCancelPendingCall>(op).completion, message);
       } else if (std::holds_alternative<QueuedGetPipelinedCap>(op)) {
         completeRegisterFailure(std::get<QueuedGetPipelinedCap>(op).completion, message);
       } else if (std::holds_alternative<QueuedStreamingCall>(op)) {
@@ -8548,6 +8604,7 @@ class RuntimeLoop {
   std::unordered_map<uint32_t, PendingRegisterPromise> registerPromises_;
   std::unordered_map<uint32_t, PendingUnitPromise> unitPromises_;
   std::unordered_map<uint32_t, kj::Own<kj::Canceler>> activeRegisterPromiseCancelers_;
+  std::unordered_map<uint32_t, kj::Own<kj::Canceler>> activePendingCallCancelers_;
   std::unordered_map<uint32_t, kj::Own<kj::Canceler>> activeUnitPromiseCancelers_;
   std::unordered_map<uint32_t, PendingUnitPromise> kjAsyncPromises_;
   std::unordered_set<uint32_t> retiredKjAsyncPromises_;
@@ -8820,6 +8877,11 @@ std::shared_ptr<RawCallCompletion> enqueueAwaitPendingCall(RuntimeLoop& runtime,
 std::shared_ptr<UnitCompletion> enqueueReleasePendingCall(RuntimeLoop& runtime,
                                                           uint32_t pendingCallId) {
   return runtime.enqueueReleasePendingCall(pendingCallId);
+}
+
+std::shared_ptr<UnitCompletion> enqueueCancelPendingCall(RuntimeLoop& runtime,
+                                                          uint32_t pendingCallId) {
+  return runtime.enqueueCancelPendingCall(pendingCallId);
 }
 
 std::shared_ptr<RegisterTargetCompletion> enqueueGetPipelinedCap(

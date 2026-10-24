@@ -116,6 +116,8 @@ std::shared_ptr<RawCallCompletion> enqueueAwaitPendingCall(RuntimeLoop& runtime,
                                                            uint32_t pendingCallId);
 std::shared_ptr<UnitCompletion> enqueueReleasePendingCall(RuntimeLoop& runtime,
                                                           uint32_t pendingCallId);
+std::shared_ptr<UnitCompletion> enqueueCancelPendingCall(RuntimeLoop& runtime,
+                                                          uint32_t pendingCallId);
 std::shared_ptr<RegisterTargetCompletion> enqueueGetPipelinedCap(
     RuntimeLoop& runtime, uint32_t pendingCallId, std::vector<uint16_t> pointerPath);
 std::shared_ptr<UnitCompletion> enqueueStreamingCall(
