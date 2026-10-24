@@ -300,3 +300,87 @@ def testRuntimePendingCallCancelCompletionRace : IO Unit := do
         runtime.releaseTarget target
     assertEqual (← runtime.pendingCallCount) 0
   finally runtime.shutdown
+
+/-- Register-promise outcomes retain KJ's real transport classification. A Unix
+socket inode whose listener has closed gives ECONNREFUSED, not an invented RPC
+failure string. The original throwing API remains available. -/
+@[test]
+def testRuntimeRegisterPromiseResultRefused : IO Unit := do
+  let runtime ← Capnp.Rpc.Runtime.init
+  let directory ← IO.FS.createTempDir
+  let address := s!"unix:{directory / "refused.sock"}"
+  try
+    let target ← runtime.registerEchoTarget
+    try
+      let server ← runtime.newServer target
+      try
+        let listener ← server.listen address
+        runtime.releaseListener listener
+        assertTrue (← (directory / "refused.sock").pathExists)
+        let pending ← runtime.newClientStart address
+        match ← pending.awaitClientResult with
+        | .ok client => client.release; throw <| IO.userError "closed listener unexpectedly connected"
+        | .error exception =>
+          assertEqual exception.type .disconnected
+          assertTrue (!exception.description.isEmpty)
+        let legacy ← runtime.newClientStart address
+        let rejected ← try let _ ← legacy.awaitClient; pure false catch _ => pure true
+        assertTrue rejected
+        -- The consumed promise cannot be awaited twice or mistaken for a
+        -- transient connection error merely because the handle is invalid.
+        let invalid ← try let _ ← pending.awaitResult; pure false catch _ => pure true
+        assertTrue invalid
+      finally server.release
+    finally runtime.releaseTarget target
+  finally
+    runtime.shutdown
+    IO.FS.removeDirAll directory
+
+@[test]
+def testRuntimeRegisterPromiseResultSuccess : IO Unit := do
+  let runtime ← Capnp.Rpc.Runtime.init
+  let directory ← IO.FS.createTempDir
+  try
+    let target ← runtime.registerEchoTarget
+    try
+      let server ← runtime.newServer target
+      try
+        let address := s!"unix:{directory / "success.sock"}"
+        let listener ← server.listen address
+        try
+          let pending ← runtime.newClientStart address
+          let client ← match ← pending.awaitClientResult with
+            | .ok client => pure client
+            | .error exception => throw <| IO.userError exception.description
+          try
+            server.accept listener
+            let bootstrap ← client.bootstrap
+            try
+              let result ← Capnp.Rpc.RuntimeM.run runtime <| Capnp.Rpc.RuntimeM.call bootstrap Echo.fooMethod mkNullPayload
+              runtime.releaseCapTable result.capTable
+            finally runtime.releaseTarget bootstrap
+          finally client.release
+        finally runtime.releaseListener listener
+      finally server.release
+    finally runtime.releaseTarget target
+  finally
+    runtime.shutdown
+    IO.FS.removeDirAll directory
+
+@[test]
+def testRuntimeRegisterPromiseResultMalformed : IO Unit := do
+  let runtime ← Capnp.Rpc.Runtime.init
+  try
+    let outcome ← try
+      let pending ← runtime.newClientStart "not-a-valid-address:invalid-port"
+      pure (some (← pending.awaitClientResult))
+    catch _ => pure none
+    match outcome with
+    | none => pure ()
+    | some (.ok client) =>
+      client.release
+      throw <| IO.userError "malformed address unexpectedly connected"
+    | some (.error exception) =>
+      -- A parser/configuration failure is not transient connection loss.
+      assertEqual exception.type .failed
+  finally runtime.shutdown

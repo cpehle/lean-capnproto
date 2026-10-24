@@ -703,6 +703,36 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_promise_awai
   }
 }
 
+// Lean IO's world parameter is erased: match the two scalar arguments.
+extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_promise_await_result(
+    uint64_t runtimeId, uint32_t promiseId) {
+  auto runtime = getRuntime(runtimeId);
+  if (!runtime) {
+    return mkIoUserError("Capnp.Rpc runtime handle is invalid or already released");
+  }
+  try {
+    auto completion = rpc::enqueueAwaitRegisterPromise(*runtime, promiseId);
+    std::unique_lock<std::mutex> lock(completion->mutex);
+    completion->cv.wait(lock, [&completion]() { return completion->done; });
+    if (completion->ok) {
+      // Except.ok has constructor tag 1; its polymorphic UInt32 is boxed.
+      auto result = lean_alloc_ctor(1, 1, 0);
+      lean_ctor_set(result, 0, lean_box_uint32(completion->targetId));
+      return lean_io_result_mk_ok(result);
+    }
+    if (!completion->exception) return mkIoUserError(completion->error);
+    auto result = lean_alloc_ctor(0, 1, 0);
+    lean_ctor_set(result, 0, mkRemoteExceptionObj(*completion->exception));
+    return lean_io_result_mk_ok(result);
+  } catch (const kj::Exception& e) {
+    return mkIoUserError(describeKjException(e));
+  } catch (const std::exception& e) {
+    return mkIoUserError(e.what());
+  } catch (...) {
+    return mkIoUserError("unknown exception in register promise await result");
+  }
+}
+
 extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_register_promise_cancel(
     uint64_t runtimeId, uint32_t promiseId) {
   auto runtime = getRuntime(runtimeId);
