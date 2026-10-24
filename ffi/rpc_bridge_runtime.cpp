@@ -470,7 +470,8 @@ class RuntimeLoop {
     }
   }
 
-  ~RuntimeLoop() { shutdown(); }
+  // Destruction cannot propagate notification failures; shutdown still joins.
+  ~RuntimeLoop() { shutdown(false); }
 
   void pollCompletions() { wakeUp_.drain(); }
   int getWakeUpReadFd() const { return wakeUp_.getReadFd(); }
@@ -2501,13 +2502,15 @@ class RuntimeLoop {
     // Wake the runtime thread whether it's blocked on the legacy condition variable or on the KJ
     // event port. This keeps KJ async I/O progressing without requiring explicit Runtime.pump calls.
     queueCv_.notify_one();
-    auto* port = eventPort_.load(std::memory_order_acquire);
-    if (port != nullptr) {
-      port->wake();
+    // Keep the registration alive until wake() returns. Clearing an atomic
+    // pointer alone does not protect a notifier that already loaded it.
+    std::lock_guard<std::mutex> lock(eventPortMutex_);
+    if (eventPort_ != nullptr) {
+      eventPort_->wake();
     }
   }
 
-  void shutdown() {
+  void shutdown(bool propagateNotificationError = true) {
     {
       std::lock_guard<std::mutex> lock(queueMutex_);
       if (stopping_) {
@@ -2515,13 +2518,28 @@ class RuntimeLoop {
       }
       stopping_ = true;
     }
-    notifyWorker();
+    // The worker must be joined even when notification throws. A throwing
+    // release can otherwise destroy a still-joinable std::thread.
+    std::exception_ptr notificationError;
+    try {
+      notifyWorker();
+    } catch (...) {
+      notificationError = std::current_exception();
+    }
     if (worker_.joinable()) {
       worker_.join();
+    }
+    if (notificationError && propagateNotificationError) {
+      std::rethrow_exception(notificationError);
     }
   }
 
  private:
+  void clearEventPort() {
+    std::lock_guard<std::mutex> lock(eventPortMutex_);
+    eventPort_ = nullptr;
+  }
+
   static uint sanitizeMaxFdsPerMessage(uint32_t maxFdsPerMessage) {
     if (maxFdsPerMessage == 0) {
       return static_cast<uint>(kRuntimeDefaultMaxFdsPerMessage);
@@ -6282,11 +6300,17 @@ class RuntimeLoop {
     lean_inc_heartbeat();
     try {
       auto io = kj::setupAsyncIo();
+      // Declared after io so unregistration also precedes its destruction
+      // during exception unwinding, before the surrounding catch blocks.
+      auto unregisterEventPort = kj::defer([this]() { clearEventPort(); });
+      {
+        std::lock_guard<std::mutex> lock(eventPortMutex_);
 #if _WIN32
-      eventPort_.store(&io.win32EventPort, std::memory_order_release);
+        eventPort_ = &io.win32EventPort;
 #else
-      eventPort_.store(&io.unixEventPort, std::memory_order_release);
+        eventPort_ = &io.unixEventPort;
 #endif
+      }
       ioProvider_ = io.provider;
       waitScope_ = &io.waitScope;
       {
@@ -8242,25 +8266,25 @@ class RuntimeLoop {
       traceEncoderEnabled_ = false;
       ioProvider_ = nullptr;
       waitScope_ = nullptr;
-      eventPort_.store(nullptr, std::memory_order_release);
+      clearEventPort();
 
       failPendingCalls("Capnp.Rpc runtime shut down");
     } catch (const kj::Exception& e) {
       ioProvider_ = nullptr;
       waitScope_ = nullptr;
-      eventPort_.store(nullptr, std::memory_order_release);
+      clearEventPort();
       reportStartupFailure(describeKjException(e));
       failPendingCalls(describeKjException(e));
     } catch (const std::exception& e) {
       ioProvider_ = nullptr;
       waitScope_ = nullptr;
-      eventPort_.store(nullptr, std::memory_order_release);
+      clearEventPort();
       reportStartupFailure(e.what());
       failPendingCalls(e.what());
     } catch (...) {
       ioProvider_ = nullptr;
       waitScope_ = nullptr;
-      eventPort_.store(nullptr, std::memory_order_release);
+      clearEventPort();
       reportStartupFailure("unknown exception while starting Capnp.Rpc runtime");
       failPendingCalls("unknown exception while starting Capnp.Rpc runtime");
     }
@@ -8583,7 +8607,8 @@ class RuntimeLoop {
 
   std::mutex queueMutex_;
   std::condition_variable queueCv_;
-  std::atomic<kj::EventPort*> eventPort_{nullptr};
+  std::mutex eventPortMutex_;
+  kj::EventPort* eventPort_ = nullptr;
   kj::AsyncIoProvider* ioProvider_ = nullptr;
   kj::WaitScope* waitScope_ = nullptr;
   bool stopping_ = false;
