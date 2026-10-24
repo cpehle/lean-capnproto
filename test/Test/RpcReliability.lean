@@ -227,3 +227,76 @@ def testRuntimeProtocolDisconnectDetail : IO Unit := do
     runtime.releaseTarget bobBootstrap
   finally
     runtime.shutdown
+
+/-- Cancellation remains addressable after await consumes the public pending
+entry, and must never cancel a different outstanding call. Fixture promises are
+always rejected before runtime shutdown, including when an assertion fails. -/
+@[test]
+def testRuntimePendingCallCancelAfterAwaitExact : IO Unit := do
+  let runtime ← Capnp.Rpc.Runtime.init
+  try
+    let (target, fulfiller) ← runtime.newPromiseCapability
+    try
+      let first ← runtime.startCall target Echo.fooMethod mkNullPayload
+      let other ← runtime.startCall target Echo.fooMethod mkNullPayload
+      let firstTask ← first.awaitAsTask
+      let otherTask ← other.awaitAsTask
+      waitForPendingCount runtime "await consumed both pending handles" 0
+      first.cancel
+      match ← waitTaskWithin runtime "cancel joins awaited call" firstTask with
+      | some (.error _) => pure ()
+      | _ => throw <| IO.userError "cancel did not terminate exact awaited call"
+      assertTaskPendingWithin runtime "unrelated awaited call survives cancel" otherTask
+      fulfiller.reject .disconnected "release surviving fixture call" ByteArray.empty
+      match ← waitTaskWithin runtime "surviving call joins on own rejection" otherTask with
+      | some (.error _) => pure ()
+      | _ => throw <| IO.userError "surviving call did not terminate on its own rejection"
+      assertEqual (← runtime.pendingCallCount) 0
+    finally
+      try fulfiller.reject .disconnected "unconditional fixture cleanup" ByteArray.empty catch _ => pure ()
+      try fulfiller.release catch _ => pure ()
+      runtime.releaseTarget target
+  finally runtime.shutdown
+
+@[test]
+def testRuntimePendingCallCancelBeforeAwait : IO Unit := do
+  let runtime ← Capnp.Rpc.Runtime.init
+  try
+    let (target, fulfiller) ← runtime.newPromiseCapability
+    try
+      let pending ← runtime.startCall target Echo.fooMethod mkNullPayload
+      pending.cancel
+      let task ← pending.awaitAsTask
+      match ← waitTaskWithin runtime "cancel before await joins" task with
+      | some (.error _) => pure ()
+      | _ => throw <| IO.userError "cancel before await did not preserve rejected promise"
+      assertEqual (← runtime.pendingCallCount) 0
+    finally
+      try fulfiller.reject .disconnected "unconditional fixture cleanup" ByteArray.empty catch _ => pure ()
+      try fulfiller.release catch _ => pure ()
+      runtime.releaseTarget target
+  finally runtime.shutdown
+
+/-- A completion racing timeout can win first. Cancellation of an already
+retired handle may fail, but the waiter still joins exactly once. -/
+@[test]
+def testRuntimePendingCallCancelCompletionRace : IO Unit := do
+  let runtime ← Capnp.Rpc.Runtime.init
+  try
+    for _ in [:20] do
+      let (target, fulfiller) ← runtime.newPromiseCapability
+      try
+        let pending ← runtime.startCall target Echo.fooMethod mkNullPayload
+        let task ← pending.awaitAsTask
+        waitForPendingCount runtime "race await entry consumed" 0
+        fulfiller.reject .disconnected "racing completion" ByteArray.empty
+        try pending.cancel catch _ => pure ()
+        match ← waitTaskWithin runtime "racing cancellation joins" task with
+        | some (.error _) => pure ()
+        | _ => throw <| IO.userError "racing cancellation orphaned await"
+      finally
+        try fulfiller.reject .disconnected "unconditional fixture cleanup" ByteArray.empty catch _ => pure ()
+        try fulfiller.release catch _ => pure ()
+        runtime.releaseTarget target
+    assertEqual (← runtime.pendingCallCount) 0
+  finally runtime.shutdown

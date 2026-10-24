@@ -536,6 +536,9 @@ opaque ffiRuntimePendingCallAwaitPayloadRefImpl
 opaque ffiRuntimePendingCallAwaitOutcomeImpl
     (runtime : UInt64) (pendingCall : UInt32) : IO RawCallOutcome
 
+@[extern "capnp_lean_rpc_runtime_pending_call_cancel"]
+opaque ffiRuntimePendingCallCancelImpl (runtime : UInt64) (pendingCall : UInt32) : IO Unit
+
 @[extern "capnp_lean_rpc_runtime_pending_call_release"]
 opaque ffiRuntimePendingCallReleaseImpl (runtime : UInt64) (pendingCall : UInt32) : IO Unit
 
@@ -1897,6 +1900,12 @@ This differs from `newTransportFromFd`, which duplicates the fd. -/
   | .error ex =>
       return .error ex
 
+/-- Cancel this exact call, including after its await has begun. The caller must
+join the awaiting task before releasing its runtime. Cancellation does not prove
+that remote application side effects did not occur. -/
+@[inline] def pendingCallCancel (pendingCall : RuntimePendingCallRef) : IO Unit :=
+  ffiRuntimePendingCallCancelImpl pendingCall.runtime.handle pendingCall.handle.handle
+
 @[inline] def pendingCallRelease (pendingCall : RuntimePendingCallRef) : IO Unit :=
   ffiRuntimePendingCallReleaseImpl pendingCall.runtime.handle pendingCall.handle.handle
 
@@ -2581,6 +2590,9 @@ namespace RuntimePendingCallRef
 @[inline] def awaitResult (pendingCall : RuntimePendingCallRef) :
     IO (Except RemoteException Payload) :=
   Runtime.pendingCallAwaitResult pendingCall
+
+@[inline] def cancel (pendingCall : RuntimePendingCallRef) : IO Unit :=
+  Runtime.pendingCallCancel pendingCall
 
 @[inline] def release (pendingCall : RuntimePendingCallRef) : IO Unit :=
   Runtime.pendingCallRelease pendingCall
