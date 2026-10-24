@@ -243,6 +243,20 @@ void completeRegisterFailure(const std::shared_ptr<RegisterTargetCompletion>& co
   completion->cv.notify_one();
 }
 
+void completeRegisterFailureKj(const std::shared_ptr<RegisterTargetCompletion>& completion,
+                               const kj::Exception& e) {
+  auto exception = std::make_shared<RawCallCompletion>();
+  completeFailureKj(exception, e);
+  {
+    std::lock_guard<std::mutex> lock(completion->mutex);
+    completion->ok = false;
+    completion->error = exception->error;
+    completion->exception = std::move(exception);
+    completion->done = true;
+  }
+  completion->cv.notify_one();
+}
+
 void completeUnitSuccess(const std::shared_ptr<UnitCompletion>& completion) {
   {
     std::lock_guard<std::mutex> lock(completion->mutex);

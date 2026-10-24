@@ -6328,7 +6328,7 @@ class RuntimeLoop {
                 },
                 [this, promiseId, completion](kj::Exception&& e) mutable {
                   activeRegisterPromiseCancelers_.erase(promiseId);
-                  completeRegisterFailure(completion, describeKjException(e));
+                  completeRegisterFailureKj(completion, e);
                 }));
           };
 
@@ -7432,7 +7432,7 @@ class RuntimeLoop {
             scheduleRegisterPromiseCompletion(
                 promise.promiseId, kj::mv(pending), promise.completion);
           } catch (const kj::Exception& e) {
-            completeRegisterFailure(promise.completion, describeKjException(e));
+            completeRegisterFailureKj(promise.completion, e);
           } catch (const std::exception& e) {
             completeRegisterFailure(promise.completion, e.what());
           } catch (...) {

@@ -554,6 +554,10 @@ opaque ffiRuntimePendingCallGetPipelinedCapImpl
 opaque ffiRuntimeRegisterPromiseAwaitImpl
     (runtime : UInt64) (promise : UInt32) : IO UInt32
 
+@[extern "capnp_lean_rpc_runtime_register_promise_await_result"]
+opaque ffiRuntimeRegisterPromiseAwaitResultImpl
+    (runtime : UInt64) (promise : UInt32) : IO (Except RemoteException UInt32)
+
 @[extern "capnp_lean_rpc_runtime_register_promise_cancel"]
 opaque ffiRuntimeRegisterPromiseCancelImpl
     (runtime : UInt64) (promise : UInt32) : IO Unit
@@ -1920,6 +1924,12 @@ that remote application side effects did not occur. -/
 @[inline] def registerPromiseAwait (promise : RuntimeRegisterPromiseRef) : IO UInt32 :=
   ffiRuntimeRegisterPromiseAwaitImpl promise.runtime.handle promise.handle
 
+/-- Consume a register promise while retaining genuine KJ exception metadata.
+Local handle/runtime errors remain IO errors. Cancellation and ownership match await. -/
+@[inline] def registerPromiseAwaitResult (promise : RuntimeRegisterPromiseRef) :
+    IO (Except RemoteException UInt32) :=
+  ffiRuntimeRegisterPromiseAwaitResultImpl promise.runtime.handle promise.handle
+
 @[inline] def registerPromiseCancel (promise : RuntimeRegisterPromiseRef) : IO Unit :=
   ffiRuntimeRegisterPromiseCancelImpl promise.runtime.handle promise.handle
 
@@ -2674,6 +2684,15 @@ namespace RuntimeRegisterPromiseRef
 
 @[inline] def await (promise : RuntimeRegisterPromiseRef) : IO UInt32 :=
   Runtime.registerPromiseAwait promise
+
+@[inline] def awaitResult (promise : RuntimeRegisterPromiseRef) : IO (Except RemoteException UInt32) :=
+  Runtime.registerPromiseAwaitResult promise
+
+@[inline] def awaitClientResult (promise : RuntimeRegisterPromiseRef) :
+    IO (Except RemoteException RuntimeClientRef) := do
+  return (← promise.awaitResult).map fun id => {
+    runtime := promise.runtime
+    handle := { handle := id } }
 
 @[inline] def cancel (promise : RuntimeRegisterPromiseRef) : IO Unit :=
   Runtime.registerPromiseCancel promise
