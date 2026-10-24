@@ -620,6 +620,33 @@ extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_pending_call_release(
     return mkIoUserError("unknown exception in capnp_lean_rpc_runtime_pending_call_release");
   }
 }
+extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_pending_call_cancel(
+    uint64_t runtimeId, uint32_t pendingCallId) {
+  auto runtime = getRuntime(runtimeId);
+  if (!runtime) {
+    return mkIoUserError("Capnp.Rpc runtime handle is invalid or already released");
+  }
+
+  try {
+    auto completion = rpc::enqueueCancelPendingCall(*runtime, pendingCallId);
+    {
+      std::unique_lock<std::mutex> lock(completion->mutex);
+      completion->cv.wait(lock, [&completion]() { return completion->done; });
+      if (!completion->ok) {
+        return mkIoUserError(completion->error);
+      }
+    }
+    lean_obj_res ok;
+    mkIoOkUnit(ok);
+    return ok;
+  } catch (const kj::Exception& e) {
+    return mkIoUserError(describeKjException(e));
+  } catch (const std::exception& e) {
+    return mkIoUserError(e.what());
+  } catch (...) {
+    return mkIoUserError("unknown exception in capnp_lean_rpc_runtime_pending_call_cancel");
+  }
+}
 
 extern "C" LEAN_EXPORT lean_obj_res capnp_lean_rpc_runtime_pending_call_get_pipelined_cap(
     uint64_t runtimeId, uint32_t pendingCallId, b_lean_obj_arg pipelineOps) {
