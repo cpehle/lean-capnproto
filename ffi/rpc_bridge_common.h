@@ -210,6 +210,8 @@ struct RegisterTargetCompletion {
   bool ok = false;
   std::string error;
   uint32_t targetId = 0;
+  // Present only for a genuine KJ failure; local handle/queue errors stay IO errors.
+  std::shared_ptr<RawCallCompletion> exception;
 };
 
 struct UnitCompletion {
@@ -325,6 +327,8 @@ void completeFailure(const std::shared_ptr<RawCallCompletion>& completion, std::
 void completeFailureKj(const std::shared_ptr<RawCallCompletion>& completion, const kj::Exception& e);
 void completeRegisterSuccess(const std::shared_ptr<RegisterTargetCompletion>& completion, uint32_t targetId);
 void completeRegisterFailure(const std::shared_ptr<RegisterTargetCompletion>& completion, std::string message);
+void completeRegisterFailureKj(const std::shared_ptr<RegisterTargetCompletion>& completion,
+                               const kj::Exception& e);
 void completeUnitSuccess(const std::shared_ptr<UnitCompletion>& completion);
 void completeUnitFailure(const std::shared_ptr<UnitCompletion>& completion, std::string message);
 void completeUInt64Success(const std::shared_ptr<UInt64Completion>& completion, uint64_t value);
