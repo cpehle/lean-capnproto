@@ -3485,15 +3485,42 @@ class RuntimeLoop {
     lean_object* bootstrapFactory_;
   };
 
-  struct RuntimeServer {
+  struct RuntimeServer final: private kj::TaskSet::ErrorHandler {
     explicit RuntimeServer(capnp::Capability::Client bootstrap)
-        : bootstrap(kj::mv(bootstrap)) {}
+        : bootstrap(kj::mv(bootstrap)), connections(*this) {}
     explicit RuntimeServer(
         kj::Own<capnp::BootstrapFactory<capnp::rpc::twoparty::VatId>> bootstrapFactory)
-        : bootstrapFactory(kj::mv(bootstrapFactory)) {}
+        : bootstrapFactory(kj::mv(bootstrapFactory)), connections(*this) {}
     kj::Maybe<capnp::Capability::Client> bootstrap;
     kj::Maybe<kj::Own<capnp::BootstrapFactory<capnp::rpc::twoparty::VatId>>> bootstrapFactory;
-    kj::Vector<kj::Own<NetworkServerPeer>> peers;
+    // Non-owning index for trace updates and drain snapshots. The disconnect
+    // task owns the peer, following capnp::TwoPartyServer's attachment pattern.
+    std::unordered_set<NetworkServerPeer*> peers;
+
+    struct AttachedPeer {
+      RuntimeServer& server;
+      kj::Own<NetworkServerPeer> peer;
+      AttachedPeer(RuntimeServer& server, kj::Own<NetworkServerPeer>&& peer)
+          : server(server), peer(kj::mv(peer)) {
+        server.peers.insert(this->peer.get());
+      }
+      ~AttachedPeer() { server.peers.erase(peer.get()); }
+    };
+
+    void accept(kj::Own<NetworkServerPeer>&& peer) {
+      auto disconnected = peer->network->onDisconnect();
+      // Attachment destruction happens after promise completion, not inside a
+      // callback deleting its own RPC network. Error/cancellation use the same
+      // teardown, including releaseServer with live connections.
+      connections.add(disconnected.attach(kj::heap<AttachedPeer>(*this, kj::mv(peer))));
+    }
+
+    void taskFailed(kj::Exception&& exception) override {
+      debugLog("runtime.server_disconnect_failed", describeKjException(exception));
+    }
+
+    // Destroy/cancel tasks before the active-peer index or bootstrap factory.
+    kj::TaskSet connections;
   };
 
   struct PendingCall {
@@ -6162,7 +6189,7 @@ class RuntimeLoop {
 
     auto connection = listenerIt->second->accept().wait(waitScope).downcast<kj::AsyncCapabilityStream>();
     auto peer = makeRuntimeServerPeerWithFds(*serverIt->second, kj::mv(connection));
-    serverIt->second->peers.add(kj::mv(peer));
+    serverIt->second->accept(kj::mv(peer));
   }
 
   uint32_t serverAcceptStart(uint32_t serverId, uint32_t listenerId) {
@@ -6187,7 +6214,7 @@ class RuntimeLoop {
                                             conn.downcast<kj::AsyncCapabilityStream>();
                                         auto peer = makeRuntimeServerPeerWithFds(
                                             *serverIt->second, kj::mv(connection));
-                                        serverIt->second->peers.add(kj::mv(peer));
+                                        serverIt->second->accept(kj::mv(peer));
                                       }));
     return addUnitPromise(PendingUnitPromise(kj::mv(promise), kj::mv(canceler)));
   }
@@ -6216,7 +6243,7 @@ class RuntimeLoop {
     auto connection = lowLevelProvider.wrapUnixSocketFd(
         kj::LowLevelAsyncIoProvider::OwnFd{fdCopy});
     auto peer = makeRuntimeServerPeerWithFds(*serverIt->second, kj::mv(connection));
-    serverIt->second->peers.add(kj::mv(peer));
+    serverIt->second->accept(kj::mv(peer));
 #endif
   }
 
@@ -6227,7 +6254,7 @@ class RuntimeLoop {
     }
     auto connection = takeTransport(transportId);
     auto peer = makeRuntimeServerPeerWithFds(*serverIt->second, kj::mv(connection));
-    serverIt->second->peers.add(kj::mv(peer));
+    serverIt->second->accept(kj::mv(peer));
   }
 
   void serverDrain(kj::WaitScope& waitScope, uint32_t serverId) {
@@ -6235,9 +6262,13 @@ class RuntimeLoop {
     if (serverIt == servers_.end()) {
       throw std::runtime_error("unknown RPC server id: " + std::to_string(serverId));
     }
-    for (auto& peer : serverIt->second->peers) {
-      peer->network->onDisconnect().wait(waitScope);
+    // Snapshot promises before waiting: disconnect tasks remove peers while
+    // the event loop runs, so an iterator cannot survive a wait().
+    auto promises = kj::heapArrayBuilder<kj::Promise<void>>(serverIt->second->peers.size());
+    for (auto* peer : serverIt->second->peers) {
+      promises.add(peer->network->onDisconnect());
     }
+    kj::joinPromises(promises.finish()).wait(waitScope);
   }
 
   uint32_t serverDrainStart(uint32_t serverId) {

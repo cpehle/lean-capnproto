@@ -7335,3 +7335,56 @@ def testRuntimeAsyncFFIPump : IO Unit := do
     | .error err => throw err
   finally
     runtime.shutdown
+
+/-- A live server must release disconnected sockets without requiring server
+shutdown, while retaining a still-connected peer and its drain barrier. -/
+@[test]
+def testRuntimeServerDisconnectedPeerFds : IO Unit := do
+  let fdDirectory : System.FilePath := "/proc/self/fd"
+  unless ← fdDirectory.pathExists do return -- Linux ownership regression.
+  let countFds : IO Nat := return (← fdDirectory.readDir).size
+  let (address, socketPath) ← mkUnixTestAddress
+  let runtime ← Capnp.Rpc.Runtime.init
+  try
+    let bootstrap ← runtime.registerEchoTarget
+    let server ← runtime.newServer bootstrap
+    let listener ← server.listen address
+    let connect : IO Capnp.Rpc.RuntimeClientRef := do
+      let pending ← runtime.newClientStart address
+      let accept ← server.acceptStart listener
+      let client ← pending.awaitClient
+      accept.await
+      return client
+    let call (client : Capnp.Rpc.RuntimeClientRef) : IO Unit := do
+      let target ← client.bootstrap
+      try
+        let response ← Capnp.Rpc.RuntimeM.run runtime <| Echo.callFooM target mkNullPayload
+        runtime.releaseCapTable response.capTable
+      finally runtime.releaseTarget target
+    let held ← connect
+    call held
+    let before ← countFds
+    for _ in [:64] do
+      let client ← connect
+      try call client finally client.release
+    -- A drain must not dispose the surviving connection or finish early.
+    let pending ← server.drainStart
+    let task ← IO.asTask (prio := .dedicated) pending.await
+    IO.sleep 50
+    let premature ← IO.hasFinished task
+    call held
+    held.release
+    IO.ofExcept (← IO.wait task)
+    assertEqual premature false
+    let deadline := (← IO.monoMsNow) + 2000
+    while (← countFds) > before + 4 && (← IO.monoMsNow) < deadline do IO.sleep 10
+    let after ← countFds
+    IO.println s!"server peer FD regression: before={before} after={after} clients=64"
+    if after > before + 4 then
+      throw <| IO.userError "disconnected server peers retained file descriptors"
+    server.release
+    runtime.releaseListener listener
+    runtime.releaseTarget bootstrap
+  finally
+    runtime.shutdown
+    try IO.FS.removeFile socketPath catch _ => pure ()
